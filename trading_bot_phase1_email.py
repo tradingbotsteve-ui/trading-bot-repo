@@ -22,7 +22,7 @@ from email.mime.text import MIMEText
 
 # ── CONFIGURATION ────────────────────────────────────────────
 # Tickers you want to track — edit this list anytime
-WATCHLIST = ["AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "SHOP"]
+WATCHLIST = ["MSTR", "SOFI", "NOK", "HOOD", "COIN"]
 
 # Alert this many days before earnings (1 = alert the day before)
 ALERT_DAYS_BEFORE_EARNINGS = 1
@@ -30,7 +30,8 @@ ALERT_DAYS_BEFORE_EARNINGS = 1
 # These are pulled from GitHub Secrets automatically — do NOT paste keys here
 ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "YOUR_KEY_HERE")
 EMAIL_SENDER      = os.environ.get("EMAIL_SENDER",      "your@gmail.com")
-EMAIL_PASSWORD    = os.environ.get("EMAIL_PASSWORD",    "your_app_password")
+_raw_pw = os.environ.get("EMAIL_PASSWORD", "your_app_password")
+EMAIL_PASSWORD = "".join(c for c in _raw_pw if c.isascii() and c not in (" ", "\xa0"))
 EMAIL_RECIPIENT   = os.environ.get("EMAIL_RECIPIENT",   "your@gmail.com")
 # ──────────────────────────────────────────────────────────────
 
@@ -347,6 +348,7 @@ def run():
         info = get_price_info(ticker)
         earn_date, days_until = get_earnings_info(ticker)
         news = get_news(ticker)
+        import time; time.sleep(13)   # stay under 5 req/min on free tier
 
         is_alert = days_until is not None and 0 <= days_until <= ALERT_DAYS_BEFORE_EARNINGS
         if is_alert:
