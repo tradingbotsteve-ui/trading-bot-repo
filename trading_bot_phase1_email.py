@@ -30,7 +30,8 @@ ALERT_DAYS_BEFORE_EARNINGS = 1
 # These are pulled from GitHub Secrets automatically — do NOT paste keys here
 ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "YOUR_KEY_HERE")
 EMAIL_SENDER      = os.environ.get("EMAIL_SENDER",      "your@gmail.com")
-EMAIL_PASSWORD    = os.environ.get("EMAIL_PASSWORD",    "your_app_password")
+_raw_pw = os.environ.get("EMAIL_PASSWORD", "your_app_password")
+EMAIL_PASSWORD = "".join(c for c in _raw_pw if c.isascii() and c not in (" ", "\xa0"))
 EMAIL_RECIPIENT   = os.environ.get("EMAIL_RECIPIENT",   "your@gmail.com")
 # ──────────────────────────────────────────────────────────────
 
