@@ -348,6 +348,7 @@ def run():
         info = get_price_info(ticker)
         earn_date, days_until = get_earnings_info(ticker)
         news = get_news(ticker)
+        import time; time.sleep(13)
 
         is_alert = days_until is not None and 0 <= days_until <= ALERT_DAYS_BEFORE_EARNINGS
         if is_alert:
