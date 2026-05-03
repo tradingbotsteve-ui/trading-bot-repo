@@ -1,77 +1,57 @@
 # ============================================================
 #  GitHub Actions — Trading Bot Schedule
 #
-#  REPLACE your existing .github/workflows/schedule.yml
-#  with this file entirely.
+#  File location in your repo:
+#    .github/workflows/schedule.yml
 #
-#  ONE Python file (trading_bot.py) — TWO emails per day:
-#    7:00 AM PT  → Morning Brief  (full scan + watchlist)
-#    5:00 PM PT  → Evening Update (watchlist only)
+#  Schedule (Pacific Time — BC, Canada):
+#    Morning : 6:00 AM PT  = 13:00 UTC (PDT summer) / 14:00 UTC (PST winter)
+#    Evening : 5:00 PM PT  = 00:00 UTC (PDT summer) / 01:00 UTC (PST winter)
 #
-#  UTC conversions (PDT = UTC-7, Apr–Oct):
-#    7 AM PDT = 14:00 UTC
-#    5 PM PDT = 00:00 UTC (midnight, next calendar day in UTC)
-#
-#  Weekdays only (markets are closed on weekends).
+#  NOTE: GitHub Actions uses UTC. The times below are set for
+#  PDT (UTC-7, Apr–Oct). In winter (PST, UTC-8) they'll shift
+#  1 hour later. You can update the cron lines each season if
+#  exact timing matters to you.
 # ============================================================
 
-name: Trading Bot
+name: Trading Bot Daily Report
 
 on:
   schedule:
-    # 7:00 AM PDT (UTC-7) = 14:00 UTC — Morning full report
-    - cron: "0 14 * * 1-5"
+    # 6:00 AM PDT (UTC-7) = 13:00 UTC
+    - cron: "0 13 * * *"
+    # 5:00 PM PDT (UTC-7) = 00:00 UTC (midnight, next UTC day)
+    - cron: "0 0 * * *"
 
-    # 5:00 PM PDT (UTC-7) = 00:00 UTC — Evening watchlist update
-    # Note: 00:00 UTC on Tue-Sat = Mon-Fri evening Pacific
-    - cron: "0 0 * * 2-6"
-
-  # Manual trigger — pick morning or evening from the GitHub UI
+  # Lets you click "Run workflow" manually from GitHub to test it
   workflow_dispatch:
-    inputs:
-      session:
-        description: "Which report to run"
-        required: true
-        default: "morning"
-        type: choice
-        options:
-          - morning
-          - evening
-
-env:
-  ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
-  EMAIL_SENDER:      ${{ secrets.EMAIL_SENDER }}
-  EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
-  EMAIL_RECIPIENT:   ${{ secrets.EMAIL_RECIPIENT }}
 
 jobs:
-
-  morning-brief:
-    name: "Morning Brief (7 AM)"
+  run-trading-bot:
     runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'schedule' && contains(github.event.schedule, '0 14')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.session == 'morning')
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # 1. Download your repo files
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # 2. Set up Python
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install yfinance textblob requests
-      - run: python trading_bot.py morning
-        timeout-minutes: 90
 
-  evening-update:
-    name: "Evening Update (5 PM)"
-    runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'schedule' && contains(github.event.schedule, '0 0')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.session == 'evening')
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install yfinance textblob requests
-      - run: python trading_bot.py evening
-        timeout-minutes: 20
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: |
+          pip install yfinance textblob requests
+
+      # 4. Run the bot — secrets are injected as environment variables
+      - name: Run trading bot
+        env:
+          ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
+          EMAIL_SENDER:      ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENT:   ${{ secrets.EMAIL_RECIPIENT }}
+        run: |
+          python trading_bot_phase1_email.py
