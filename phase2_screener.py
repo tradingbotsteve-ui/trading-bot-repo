@@ -40,13 +40,13 @@ US_UNIVERSE = {
     "Technology": [
         "AAPL","MSFT","GOOGL","META","NVDA","AMD","INTC","QCOM","TXN","ADI",
         "MCHP","SWKS","MU","STX","WDC","CSCO","ORCL","IBM","AMAT","LRCX",
-        "KLAC","ASML","SNPS","CDNS","ANSS","ADBE","CRM","NOW","WDAY","VEEV",
-        "ZM","DOCU","BOX","DDOG","SNOW","PLTR","PATH","AI","SAMSF","HPQ",
+        "KLAC","ASML","SNPS","CDNS","ADBE","CRM","NOW","WDAY","VEEV",
+        "ZM","DOCU","BOX","DDOG","SNOW","PLTR","PATH","AI","HPQ",
         "DELL","PSTG","NTAP","FFIV","JNPR","AKAM","NET","FSLY","ESTC",
     ],
     "Consumer Cyclical": [
         "AMZN","TSLA","HD","LOW","TJX","ROST","BURL","NKE","LULU","PVH",
-        "RL","VFC","HBI","GPS","ANF","AEO","URBN","CHWY","ETSY","EBAY",
+        "RL","VFC","GPS","ANF","AEO","URBN","CHWY","ETSY","EBAY",
         "BABA","JD","PDD","W","RH","BBY","DKS","ULTA","BOOT","SHAK",
         "CMG","MCD","SBUX","YUM","QSR","DPZ","WEN","JACK","DENN",
     ],
