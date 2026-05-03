@@ -59,7 +59,7 @@ jobs:
           python-version: "3.11"
       - run: pip install yfinance textblob requests
       - run: python phase2_screener.py morning
-        timeout-minutes: 90
+        timeout-minutes: 120
 
   evening-update:
     name: "Evening Update (5 PM)"
@@ -74,4 +74,4 @@ jobs:
           python-version: "3.11"
       - run: pip install yfinance textblob requests
       - run: python phase2_screener.py evening
-        timeout-minutes: 20
+        timeout-minutes: 120
