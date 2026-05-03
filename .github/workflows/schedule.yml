@@ -1,57 +1,71 @@
-# ============================================================
-#  GitHub Actions — Trading Bot Schedule
-#
-#  File location in your repo:
-#    .github/workflows/schedule.yml
-#
-#  Schedule (Pacific Time — BC, Canada):
-#    Morning : 6:00 AM PT  = 13:00 UTC (PDT summer) / 14:00 UTC (PST winter)
-#    Evening : 5:00 PM PT  = 00:00 UTC (PDT summer) / 01:00 UTC (PST winter)
-#
-#  NOTE: GitHub Actions uses UTC. The times below are set for
-#  PDT (UTC-7, Apr–Oct). In winter (PST, UTC-8) they'll shift
-#  1 hour later. You can update the cron lines each season if
-#  exact timing matters to you.
-# ============================================================
-
-name: Trading Bot Daily Report
+name: Trading Bot Full Schedule
 
 on:
   schedule:
-    # 6:00 AM PDT (UTC-7) = 13:00 UTC
-    - cron: "0 13 * * *"
-    # 5:00 PM PDT (UTC-7) = 00:00 UTC (midnight, next UTC day)
-    - cron: "0 0 * * *"
+    # ── 5:00 AM Pacific = 13:00 UTC ── Morning Brief (Mon–Fri)
+    - cron: '0 13 * * 1-5'
+    # ── 6:00 PM Pacific = 02:00 UTC next day ── EOD Recap (Mon–Fri)
+    - cron: '0 2 * * 2-6'
 
-  # Lets you click "Run workflow" manually from GitHub to test it
+  # Manual trigger — lets you run either phase from the Actions tab
   workflow_dispatch:
+    inputs:
+      phase:
+        description: 'Which phase to run'
+        required: true
+        default: 'morning'
+        type: choice
+        options:
+          - morning
+          - eod
 
 jobs:
-  run-trading-bot:
+  run-bot:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Download your repo files
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v3
 
-      # 2. Set up Python
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      # 3. Install dependencies
-      - name: Install dependencies
+      - name: 📦 Install dependencies
+        run: pip install requests
+
+      # ── Determine phase from schedule time or manual input ──
+      - name: 🕐 Detect which phase to run
+        id: detect_phase
         run: |
-          pip install yfinance textblob requests
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "phase=${{ github.event.inputs.phase }}" >> $GITHUB_OUTPUT
+          else
+            HOUR=$(date -u +"%H")
+            if [ "$HOUR" = "13" ]; then
+              echo "phase=morning" >> $GITHUB_OUTPUT
+            else
+              echo "phase=eod" >> $GITHUB_OUTPUT
+            fi
+          fi
 
-      # 4. Run the bot — secrets are injected as environment variables
-      - name: Run trading bot
+      # ── 5 AM run ──
+      - name: 🌅 Run Morning Brief (5 AM — Watchlist + Full Market Scan)
+        if: steps.detect_phase.outputs.phase == 'morning'
         env:
           ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
-          EMAIL_SENDER:      ${{ secrets.EMAIL_SENDER }}
+          EMAIL_ADDRESS:     ${{ secrets.EMAIL_ADDRESS }}
           EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_RECIPIENT:   ${{ secrets.EMAIL_RECIPIENT }}
-        run: |
-          python trading_bot_phase1_email.py
+          TO_EMAIL:          ${{ secrets.TO_EMAIL }}
+        run: python trading_bot.py --phase morning
+
+      # ── 6 PM run ──
+      - name: 🌆 Run End-of-Day Recap (6 PM — Watchlist Recap)
+        if: steps.detect_phase.outputs.phase == 'eod'
+        env:
+          ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
+          EMAIL_ADDRESS:     ${{ secrets.EMAIL_ADDRESS }}
+          EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
+          TO_EMAIL:          ${{ secrets.TO_EMAIL }}
+        run: python trading_bot.py --phase eod
