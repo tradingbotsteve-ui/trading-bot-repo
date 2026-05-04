@@ -117,7 +117,7 @@ OPTIONS_UNIVERSE = {
     # VOD   ~$9:  Vodafone; UK telecom listed in US, dividend + options
     # GRAB  ~$4:  Grab Holdings, SE Asia super-app; active options
     # BBD   ~$2:  Banco Bradesco; Brazilian bank, cheap options
-    "Telecom / Media": ["T", "PARA", "WBD", "NOK", "VOD", "GRAB", "BBD"],
+    "Telecom / Media": ["T", "WBD", "NOK", "VOD", "GRAB", "BBD"],
 
     # ── Mining / Commodities ─────────────────────────────────
     # CLF   ~$11: Cleveland Cliffs, US steel; high beta, active options
