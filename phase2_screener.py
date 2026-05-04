@@ -42,7 +42,7 @@ US_UNIVERSE = {
         "MCHP","SWKS","MU","STX","WDC","CSCO","ORCL","IBM","AMAT","LRCX",
         "KLAC","ASML","SNPS","CDNS","ADBE","CRM","NOW","WDAY","VEEV",
         "ZM","DOCU","BOX","DDOG","SNOW","PLTR","PATH","AI","HPQ",
-        "DELL","PSTG","NTAP","FFIV","JNPR","AKAM","NET","FSLY","ESTC",
+        "DELL","PSTG","NTAP","FFIV","JNPR","AKAM","NET","FSLY","ESTC","BBAI",
     ],
     "Consumer Cyclical": [
         "AMZN","TSLA","HD","LOW","TJX","ROST","BURL","NKE","LULU","PVH",
