@@ -1,0 +1,57 @@
+# ============================================================
+#  GitHub Actions — Trading Bot Full Schedule
+#
+#  REPLACE your existing .github/workflows/schedule.yml
+#  with this entire file.
+#
+#  Four jobs, four emails, weekdays only (Mon–Fri):
+#
+#    7:00 AM PT  → "Morning Brief"        trading_bot.py morning
+#    9:00 AM PT  → "Crypto Altcoin Brief"  crypto_bot.py
+#    5:00 PM PT  → "Evening Update"        trading_bot.py evening
+#
+#  UTC offsets (PDT = UTC-7, Apr-Oct | PST = UTC-8, Nov-Mar):
+#    7 AM PDT  = 14:00 UTC
+#    9 AM PDT  = 16:00 UTC
+#    5 PM PDT  = 00:00 UTC (next calendar day in UTC)
+# ============================================================
+
+name: Cryto Trading Bot
+
+on:
+  schedule:
+    - cron: "0 16 * * 1-5"   # 9:00 AM PDT  — Crypto Altcoin Brief
+
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which report to run"
+        required: true
+        default: "crypto"
+        type: choice
+        options:
+          - crypto
+
+env:
+  ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
+  EMAIL_SENDER:      ${{ secrets.EMAIL_SENDER }}
+  EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
+  EMAIL_RECIPIENT:   ${{ secrets.EMAIL_RECIPIENT }}
+
+jobs:
+
+
+  # ── 9:00 AM — Crypto Altcoin Brief (Phase 4) ───────────────
+  crypto-brief:
+    name: "Crypto Altcoin Brief — 9 AM"
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'schedule' && contains(github.event.schedule, '0 16')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'crypto')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install textblob requests
+      - run: python crypto_bot.py
+        timeout-minutes: 180
