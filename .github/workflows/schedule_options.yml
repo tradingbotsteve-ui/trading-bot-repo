@@ -29,12 +29,11 @@ on:
       job:
         description: "Which job to run"
         required: true
-        default: "morning"
+        default: "options"
         type: choice
         options:
-          - morning
           - options
-          - evening
+    
 
 env:
   ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
@@ -43,21 +42,6 @@ env:
   EMAIL_RECIPIENT:   ${{ secrets.EMAIL_RECIPIENT }}
 
 jobs:
-
-  # ── 7:00 AM — Morning Brief (Phase 1 + 2) ──────────────────
-  morning-brief:
-    name: "Morning Brief — 7 AM"
-    runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'schedule' && contains(github.event.schedule, '0 14')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'morning')
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install yfinance textblob requests
-      - run: python trading_bot.py morning
-        timeout-minutes: 90
 
   # ── 8:00 AM — Options Brief (Phase 3) ──────────────────────
   options-brief:
@@ -71,20 +55,5 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: pip install yfinance textblob requests pandas
-      - run: python options_bot.py
-        timeout-minutes: 180
-
-  # ── 5:00 PM — Evening Update (Phase 1 only) ────────────────
-  evening-update:
-    name: "Evening Update — 5 PM"
-    runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'schedule' && contains(github.event.schedule, '0 0')) ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'evening')
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install yfinance textblob requests
-      - run: python trading_bot.py evening
+      - run: python phase3_options.py
         timeout-minutes: 180
