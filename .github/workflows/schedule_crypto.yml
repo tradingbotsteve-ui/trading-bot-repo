@@ -1,29 +1,33 @@
-name: Daily Kraken Under-$1 Scanner
+name: Crypto Bot Daily - Kraken
 
 on:
   schedule:
-    # 8:00 AM PDT ≈ 15:00 UTC
-    - cron: "0 15 * * *"
-  workflow_dispatch: {}
+    - cron: "0 15 * * 1-5"   # 8:00 AM PDT, weekdays only
+  workflow_dispatch:
+
+env:
+  EMAIL_SENDER:      ${{ secrets.EMAIL_SENDER }}
+  EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
+  EMAIL_RECIPIENT:   ${{ secrets.EMAIL_RECIPIENT }}
 
 jobs:
-  run-bot:
+  crypto-brief:
+    name: "Crypto Brief — 8 AM"
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests
+      - run: pip install requests
 
-      - name: Run bot
+      - name: Run crypto bot
+        env:
+          EMAIL_SENDER:      ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENT:   ${{ secrets.EMAIL_RECIPIENT }}
         run: |
           python Crypto_Bot/crypto_bot.py
