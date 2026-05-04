@@ -140,7 +140,7 @@ OPTIONS_UNIVERSE = {
     # GME   ~$20: GameStop; massive retail options activity, meme stock
     # BBBY  ~$0.01: bankrupt — excluded
     # WBA   ~$10: Walgreens; turnaround story, liquid options
-    "Retail": ["GME", "WBA"],
+    "Retail": ["GME"],
 
     # ── Quantum / Emerging Tech ──────────────────────────────
     # QUBT  ~$8:  Quantum Computing Inc; speculative
