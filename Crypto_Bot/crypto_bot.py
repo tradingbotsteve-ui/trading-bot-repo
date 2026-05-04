@@ -1,7 +1,7 @@
 import requests
 import time
-import pandas as pd
 from datetime import datetime, timezone
+
 
 KRAKEN_BASE = "https://api.kraken.com/0/public"
 
@@ -32,74 +32,112 @@ def fetch_tickers(pairs):
     return resp.json()["result"]
 
 
-def fetch_ohlc(pair, interval=1440, since=None):
+def fetch_ohlc(pair, interval=1440):
     """Fetch OHLC candles (daily by default)."""
     params = {"pair": pair, "interval": interval}
-    if since:
-        params["since"] = since
     resp = requests.get(f"{KRAKEN_BASE}/OHLC", params=params, timeout=15)
     resp.raise_for_status()
     result = resp.json()["result"]
-    # result has {pair: [[time, open, high, low, close, vwap, volume, count], ...], 'last': ...}
     candles = result[pair]
-    df = pd.DataFrame(
-        candles,
-        columns=[
-            "time",
-            "open",
-            "high",
-            "low",
-            "close",
-            "vwap",
-            "volume",
-            "count",
-        ],
-    )
-    df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
-    df["close"] = df["close"].astype(float)
-    df["volume"] = df["volume"].astype(float)
-    return df
+    # candles: [time, open, high, low, close, vwap, volume, count]
+    return [
+        {
+            "time": int(c[0]),
+            "open": float(c[1]),
+            "high": float(c[2]),
+            "low": float(c[3]),
+            "close": float(c[4]),
+            "vwap": float(c[5]),
+            "volume": float(c[6]),
+            "count": int(c[7]),
+        }
+        for c in candles
+    ]
 
 
-def rsi(series, period=14):
-    """Simple RSI implementation."""
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    rsi_val = 100 - (100 / (1 + rs))
-    return rsi_val
+def simple_moving_average(values, window):
+    if len(values) < window:
+        return [None] * len(values)
+    sma = []
+    for i in range(len(values)):
+        if i + 1 < window:
+            sma.append(None)
+        else:
+            window_vals = values[i + 1 - window : i + 1]
+            sma.append(sum(window_vals) / window)
+    return sma
+
+
+def rsi(values, period=14):
+    if len(values) < period + 1:
+        return [None] * len(values)
+
+    deltas = [values[i] - values[i - 1] for i in range(1, len(values))]
+    gains = [max(d, 0) for d in deltas]
+    losses = [max(-d, 0) for d in deltas]
+
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+
+    rsis = [None] * (period)  # first 'period' entries are None
+
+    for i in range(period, len(deltas)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+        if avg_loss == 0:
+            rs = float("inf")
+            rsi_val = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            rsi_val = 100 - (100 / (1 + rs))
+        rsis.append(rsi_val)
+
+    # align length with original prices
+    rsis.insert(0, None)
+    return rsis
 
 
 def analyze_pair(pair_name, ticker_info):
     """Compute metrics for a single pair."""
     last_price = float(ticker_info["c"][0])
-    # Filter by price < 1
     if last_price >= 1.0:
         return None
 
-    # Basic 24h volume filter (in quote currency)
     vol_24h = float(ticker_info["v"][1])
-    if vol_24h < 50000:  # you can tune this
+    if vol_24h < 50000:  # tune this if you want
         return None
 
-    # Fetch last ~40 days of daily candles
-    df = fetch_ohlc(pair_name, interval=1440)
-    if len(df) < 25:
+    candles = fetch_ohlc(pair_name, interval=1440)
+    if len(candles) < 25:
         return None
 
-    df = df.sort_values("time")
-    df["ma7"] = df["close"].rolling(window=7).mean()
-    df["ma21"] = df["close"].rolling(window=21).mean()
-    df["rsi14"] = rsi(df["close"], period=14)
-    df["vol_ma3"] = df["volume"].rolling(window=3).mean()
+    closes = [c["close"] for c in candles]
+    volumes = [c["volume"] for c in candles]
 
-    latest = df.iloc[-1]
-    prev = df.iloc[-2]
+    ma7 = simple_moving_average(closes, 7)
+    ma21 = simple_moving_average(closes, 21)
+    rsi14 = rsi(closes, period=14)
 
-    ma_bullish = latest["ma7"] > latest["ma21"]
-    rsi_rising = latest["rsi14"] > prev["rsi14"]
-    vol_rising = latest["vol_ma3"] > prev["vol_ma3"]
+    # simple 3-day volume MA
+    vol_ma3 = simple_moving_average(volumes, 3)
+
+    # use last and previous index
+    last_idx = len(closes) - 1
+    prev_idx = len(closes) - 2
+
+    if (
+        ma7[last_idx] is None
+        or ma21[last_idx] is None
+        or rsi14[last_idx] is None
+        or vol_ma3[last_idx] is None
+        or rsi14[prev_idx] is None
+        or vol_ma3[prev_idx] is None
+    ):
+        return None
+
+    ma_bullish = ma7[last_idx] > ma21[last_idx]
+    rsi_rising = rsi14[last_idx] > rsi14[prev_idx]
+    vol_rising = vol_ma3[last_idx] > vol_ma3[prev_idx]
 
     score = 0
     if ma_bullish:
@@ -114,8 +152,8 @@ def analyze_pair(pair_name, ticker_info):
         "price": last_price,
         "vol_24h": vol_24h,
         "ma_bullish": ma_bullish,
-        "rsi_latest": latest["rsi14"],
-        "rsi_prev": prev["rsi14"],
+        "rsi_latest": rsi14[last_idx],
+        "rsi_prev": rsi14[prev_idx],
         "vol_rising": vol_rising,
         "score": score,
     }
@@ -136,15 +174,13 @@ def main():
             res = analyze_pair(pair_name, tinfo)
             if res and res["score"] >= 2:  # at least 2 bullish signals
                 results.append(res)
-            # Be nice to API
-            time.sleep(0.5)
+            time.sleep(0.5)  # be nice to API
         except Exception as e:
             print(f"Error analyzing {pair_name}: {e}")
 
-    # Sort by score then volume
     results.sort(key=lambda x: (x["score"], x["vol_24h"]), reverse=True)
 
-    print("\n=== Top Candidates (swing-style, 2–3 week bias) ===")
+    print("\n=== Top Candidates (2–3 week swing bias, under $1) ===")
     if not results:
         print("No candidates today with current filters.")
         return
@@ -157,7 +193,7 @@ def main():
             f"24h vol={r['vol_24h']:.0f}"
         )
 
-    print("\nNOTE: This is NOT guaranteed prediction. It’s just momentum/volume structure under $1 on Kraken.")
+    print("\nThis is a momentum/volume scan, not guaranteed profit. Always size risk properly.")
 
 
 if __name__ == "__main__":
