@@ -22,7 +22,7 @@ from email.mime.text import MIMEText
 
 # ── CONFIGURATION ────────────────────────────────────────────
 # Tickers you want to track — edit this list anytime
-WATCHLIST = ["SOFI", "COIN", "HOOD", "MSTR", "NOK", "GME","EBAY","ORCL","LLY","BBAI"]
+WATCHLIST = ["SOFI", "COIN", "HOOD", "MSTR", "NOK", "GOOG","MSFT","ORCL","LLY","BBAI","ASML","CLS","ADBE","]
 
 # Alert this many days before earnings (1 = alert the day before)
 ALERT_DAYS_BEFORE_EARNINGS = 1
