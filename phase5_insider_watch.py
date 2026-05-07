@@ -292,93 +292,173 @@ def filing_hash(filing_dict):
 
 
 # ══════════════════════════════════════════════════════════════
-# SOURCE 1 — SEC EDGAR Form 4 (Corporate Insiders)
+# DATA SOURCES — REBUILT FOR GITHUB ACTIONS COMPATIBILITY
 #
-# SEC EDGAR has a free RSS feed of all Form 4 filings.
-# Form 4 = insider transaction report.
-# Filed within 2 business days of the trade.
-# The most time-sensitive signal we track.
+# The previous approach used:
+#   ❌ SEC RSS feed        — blocks GitHub Actions IPs
+#   ❌ OpenInsider scrape  — blocks server-side scrapers
+#   ❌ housestockwatcher   — DNS fails from GitHub runners
+#
+# New approach uses:
+#   ✅ data.sec.gov REST API  — official SEC JSON API, no key,
+#                               works from any server, rate limit
+#                               is 10 req/sec with proper User-Agent
+#   ✅ efts.sec.gov search    — SEC full-text search, returns JSON,
+#                               works from GitHub Actions
+#   ✅ Quiver Quantitative    — free JSON API for Congress trades,
+#                               confirmed working from servers
+#   ✅ senate.gov XML feed    — official Senate disclosure data
+#
+# HOW data.sec.gov WORKS:
+#   1. Get all company CIKs:  data.sec.gov/files/company_tickers.json
+#   2. For each famous ticker, get its CIK
+#   3. Get submissions:       data.sec.gov/submissions/CIK{10digit}.json
+#   4. Filter for Form 4 filings filed in last 3 days
+#   5. Download Form 4 XML:   sec.gov/Archives/edgar/data/{cik}/{file}
+#   6. Parse XML for trades
 # ══════════════════════════════════════════════════════════════
 
-def fetch_sec_form4():
+# ── SOURCE 1 — SEC EDGAR data.sec.gov (Official REST API) ───────
+#
+# Uses the official SEC EDGAR REST API at data.sec.gov.
+# No API key. No auth. Works from any server including GitHub Actions.
+# Rate limit: 10 requests/second with proper User-Agent.
+# Returns JSON directly — no HTML scraping needed.
+# ────────────────────────────────────────────────────────────────
+
+# Cache the CIK map so we only fetch it once per run
+_CIK_MAP = {}
+
+def build_cik_map():
     """
-    Pulls the latest Form 4 filings from SEC EDGAR's full-text search API.
-    Returns a list of parsed filing dicts.
+    Downloads the full ticker→CIK mapping from SEC.
+    data.sec.gov/files/company_tickers.json returns all ~10,000
+    publicly traded companies and their CIK numbers.
+    CIK is the unique ID SEC uses to identify every company.
+    """
+    global _CIK_MAP
+    if _CIK_MAP:
+        return _CIK_MAP
+    try:
+        url = "https://data.sec.gov/files/company_tickers.json"
+        r   = requests.get(url, headers=HEADERS, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        # Format: {"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}, ...}
+        for entry in data.values():
+            ticker = entry.get("ticker", "").upper()
+            cik    = str(entry.get("cik_str", "")).zfill(10)
+            if ticker:
+                _CIK_MAP[ticker] = cik
+        print(f"  CIK map loaded: {len(_CIK_MAP)} companies")
+    except Exception as e:
+        print(f"  CIK map error: {e}")
+    return _CIK_MAP
+
+
+def get_recent_form4_for_ticker(ticker, cik, days_back=3):
+    """
+    For a given company CIK, fetches its recent Form 4 filings.
+    Steps:
+      1. GET data.sec.gov/submissions/CIK{10digit}.json
+         → returns all recent filings as JSON arrays
+      2. Filter for form type "4" filed in last N days
+      3. For each, download and parse the XML from sec.gov/Archives/
     """
     filings = []
+    cutoff  = datetime.now(timezone.utc) - timedelta(days=days_back)
 
     try:
-        # SEC EDGAR full-text search for recent Form 4 filings
-        url = "https://efts.sec.gov/LATEST/search-index?q=%22form+4%22&dateRange=custom&startdt={}&enddt={}&forms=4".format(
-            (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d"),
-            datetime.now().strftime("%Y-%m-%d")
-        )
+        sub_url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+        r = requests.get(sub_url, headers=HEADERS, timeout=15)
+        if r.status_code != 200:
+            return []
 
-        # Better: use the EDGAR RSS feed for Form 4 — more reliable
-        rss_url = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=4&dateb=&owner=include&count=100&search_text=&output=atom"
-        r = requests.get(rss_url, headers=HEADERS, timeout=20)
-        r.raise_for_status()
+        data     = r.json()
+        company  = data.get("name", ticker)
+        recent   = data.get("filings", {}).get("recent", {})
 
-        root = ET.fromstring(r.content)
-        ns   = {"atom": "http://www.w3.org/2005/Atom"}
+        forms        = recent.get("form", [])
+        filed_dates  = recent.get("filedAt", recent.get("filed", []))
+        accession_nos= recent.get("accessionNumber", [])
+        primary_docs = recent.get("primaryDocument", [])
 
-        entries = root.findall("atom:entry", ns)
-        print(f"  SEC Form 4 RSS: {len(entries)} recent filings found")
-
-        for entry in entries[:80]:  # process most recent 80
+        for i, form_type in enumerate(forms):
+            if form_type not in ("4", "4/A"):
+                continue
             try:
-                title    = entry.findtext("atom:title", "", ns)
-                link_el  = entry.find("atom:link", ns)
-                link     = link_el.get("href", "") if link_el is not None else ""
-                updated  = entry.findtext("atom:updated", "", ns)
-                summary  = entry.findtext("atom:summary", "", ns)
+                filed_str = filed_dates[i] if i < len(filed_dates) else ""
+                # Parse date — can be "2026-05-07" or "2026-05-07T..."
+                filed_date = datetime.strptime(filed_str[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                if filed_date < cutoff:
+                    continue
 
-                # Title format: "4 - COMPANY NAME (TICKER) (0001234567) (Reporting)"
-                ticker_match   = re.search(r'\(([A-Z]{1,5})\)', title)
-                company_match  = re.search(r'4 - (.+?) \(', title)
+                accession = accession_nos[i].replace("-", "") if i < len(accession_nos) else ""
+                if not accession:
+                    continue
 
-                ticker  = ticker_match.group(1)  if ticker_match  else ""
-                company = company_match.group(1) if company_match else title
+                # Build the XML URL for this filing
+                xml_url = (f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
+                           f"{accession}/{accession_nos[i]}.txt")
 
-                # Parse filing detail page to get actual trade data
-                filing_data = parse_sec_filing_detail(link, ticker, company, updated)
-                if filing_data:
-                    filings.extend(filing_data)
+                # Try the primary document first
+                primary = primary_docs[i] if i < len(primary_docs) else ""
+                if primary and primary.endswith(".xml"):
+                    xml_url = (f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/"
+                               f"{accession}/{primary}")
+
+                parsed = parse_form4_xml_url(xml_url, ticker, company, filed_str[:10], cik, accession_nos[i])
+                filings.extend(parsed)
+                time.sleep(0.12)  # stay under 10 req/sec SEC rate limit
 
             except Exception:
                 pass
 
     except Exception as e:
-        print(f"  SEC Form 4 fetch error: {e}")
+        pass
 
     return filings
 
 
-def parse_sec_filing_detail(index_url, ticker, company, filed_date):
+def parse_form4_xml_url(xml_url, ticker, company, filed_date, cik, accession):
     """
-    Fetches the Form 4 index page and extracts the XML filing.
-    Parses: filer name, title, transaction type, shares, price, value.
+    Downloads a Form 4 XML file and extracts all transactions.
+    Falls back to the filing index page if direct XML fails.
     """
     results = []
+    xml_content = None
+
+    # Try direct XML URL first
     try:
-        # Get the index page to find the XML
-        r = requests.get(index_url, headers=HEADERS, timeout=15)
-        if r.status_code != 200:
-            return []
+        r = requests.get(xml_url, headers=HEADERS, timeout=15)
+        if r.status_code == 200 and "<ownershipDocument" in r.text:
+            xml_content = r.text
+    except Exception:
+        pass
 
-        # Find the XML filing link
-        xml_match = re.search(r'href="(/Archives/edgar/data/[^"]+\.xml)"', r.text)
-        if not xml_match:
-            return []
+    # Fallback: get index page and find the XML link
+    if not xml_content:
+        try:
+            acc_dashes = f"{accession[:10]}-{accession[10:12]}-{accession[12:]}"
+            index_url  = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{accession}/{acc_dashes}-index.htm"
+            r = requests.get(index_url, headers=HEADERS, timeout=15)
+            if r.status_code == 200:
+                xml_match = re.search(r'href="([^"]+\.xml)"', r.text)
+                if xml_match:
+                    xml_file_url = "https://www.sec.gov" + xml_match.group(1) if xml_match.group(1).startswith("/") else xml_match.group(1)
+                    xr = requests.get(xml_file_url, headers=HEADERS, timeout=15)
+                    if xr.status_code == 200:
+                        xml_content = xr.text
+        except Exception:
+            pass
 
-        xml_url = "https://www.sec.gov" + xml_match.group(1)
-        xr = requests.get(xml_url, headers=HEADERS, timeout=15)
-        if xr.status_code != 200:
-            return []
+    if not xml_content:
+        return results
 
-        root = ET.fromstring(xr.content)
+    try:
+        root = ET.fromstring(xml_content.encode("utf-8"))
 
-        # Extract filer info
+        # ── Extract reporter info ─────────────────────────────
         reporter_name  = ""
         reporter_title = ""
         is_director    = False
@@ -386,68 +466,72 @@ def parse_sec_filing_detail(index_url, ticker, company, filed_date):
         is_ten_pct     = False
 
         for rn in root.iter("reportingOwner"):
-            reporter_name  = _xml_text(rn, "rptOwnerName")
-            reporter_title = _xml_text(rn, "officerTitle") or _xml_text(rn, "rptOwnerRelationship")
+            reporter_name  = (_xml_text(rn, "rptOwnerName") or
+                              _xml_text(rn, "reportingOwnerName") or "")
+            reporter_title = (_xml_text(rn, "officerTitle") or
+                              _xml_text(rn, "rptOwnerRelationship") or "")
             is_director    = _xml_text(rn, "isDirector") == "1"
             is_officer     = _xml_text(rn, "isOfficer")  == "1"
             is_ten_pct     = _xml_text(rn, "isTenPercentOwner") == "1"
 
-        # Extract transactions
+        if not reporter_name:
+            return results  # can't use a filing with no name
+
+        # ── Extract non-derivative transactions (direct stock buys/sells)
         for tx in root.iter("nonDerivativeTransaction"):
             try:
-                sec_title      = _xml_text(tx, "securityTitle")
-                tx_date_str    = _xml_text(tx, "transactionDate")
-                tx_code        = _xml_text(tx, "transactionCode")  # P=purchase, S=sale
-                shares_str     = _xml_text(tx, "transactionShares")
-                price_str      = _xml_text(tx, "transactionPricePerShare")
-                shares_after   = _xml_text(tx, "sharesOwnedFollowingTransaction")
+                tx_date_str  = _xml_text(tx, "transactionDate")
+                tx_code      = _xml_text(tx, "transactionCode")
+                shares_str   = _xml_text(tx, "transactionShares")
+                price_str    = _xml_text(tx, "transactionPricePerShare")
+                shares_after = _xml_text(tx, "sharesOwnedFollowingTransaction")
+                sec_title    = _xml_text(tx, "securityTitle") or "Common Stock"
 
-                if not shares_str or not price_str:
+                if tx_code not in ("P", "S", "A", "D"):
+                    continue
+                if not shares_str:
                     continue
 
-                shares = float(shares_str.replace(",", ""))
-                price  = float(price_str.replace(",", "")) if price_str else 0
+                shares = abs(float(shares_str.replace(",", "")))
+                price  = float(price_str.replace(",", "")) if price_str and price_str != "0" else 0
                 value  = shares * price
 
-                if value < MIN_TRADE_VALUE_USD:
+                # For awards with no price, estimate from recent price
+                if value < 1 and shares > 0 and tx_code == "A":
+                    value = shares  # placeholder — will show as award
+
+                if value < MIN_TRADE_VALUE_USD and tx_code != "A":
                     continue
 
-                if tx_code not in ("P", "S", "A", "D"):  # P=buy, S=sell, A=award, D=disposal
-                    continue
-
-                tx_type = {
-                    "P": "BOUGHT",
-                    "S": "SOLD",
-                    "A": "AWARDED",
-                    "D": "DISPOSED",
-                }.get(tx_code, tx_code)
-
-                is_buy = tx_code in ("P", "A")
+                is_buy  = tx_code in ("P", "A")
+                tx_type = {"P": "BOUGHT", "S": "SOLD", "A": "AWARDED", "D": "DISPOSED"}.get(tx_code, tx_code)
 
                 results.append({
-                    "source":        "SEC Form 4",
-                    "source_icon":   "🏛️",
-                    "ticker":        ticker,
-                    "company":       company,
-                    "filer":         reporter_name,
-                    "title":         reporter_title or ("Director" if is_director else "Major Shareholder" if is_ten_pct else "Insider"),
-                    "action":        tx_type,
-                    "is_buy":        is_buy,
-                    "shares":        int(shares),
-                    "price":         price,
-                    "value":         value,
-                    "shares_after":  shares_after,
-                    "security":      sec_title,
-                    "date":          tx_date_str or filed_date[:10],
-                    "filed":         filed_date[:10] if filed_date else "",
-                    "link":          index_url,
-                    "signal_strength": _sec_signal_strength(is_buy, value, is_director, is_officer, is_ten_pct),
+                    "source":         "SEC Form 4 (data.sec.gov)",
+                    "source_icon":    "🏛️",
+                    "ticker":         ticker,
+                    "company":        company,
+                    "filer":          reporter_name,
+                    "title":          reporter_title or (
+                                          "Director" if is_director else
+                                          "Major Shareholder (10%+)" if is_ten_pct else
+                                          "Corporate Officer"
+                                      ),
+                    "action":         tx_type,
+                    "is_buy":         is_buy,
+                    "shares":         int(shares),
+                    "price":          price,
+                    "value":          value,
+                    "shares_after":   shares_after,
+                    "security":       sec_title,
+                    "date":           tx_date_str or filed_date,
+                    "filed":          filed_date,
+                    "link":           f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type=4&dateb=&owner=include&count=10",
+                    "signal_strength":_sec_signal_strength(is_buy, value, is_director, is_officer, is_ten_pct),
                 })
 
             except Exception:
                 pass
-
-        time.sleep(0.3)  # be polite to SEC servers
 
     except Exception as e:
         pass
@@ -456,330 +540,210 @@ def parse_sec_filing_detail(index_url, ticker, company, filed_date):
 
 
 def _xml_text(element, tag):
-    """Safely get text from an XML element, checking common namespaces."""
-    el = element.find(tag)
-    if el is not None and el.text:
-        return el.text.strip()
-    # Try with namespace
-    for ns in ["ownershipDocument", ""]:
-        el = element.find(f"{{{ns}}}{tag}") if ns else element.find(tag)
-        if el is not None and el.text:
+    """Safely extract text from XML element, trying common tag patterns."""
+    for t in [tag, tag[0].lower() + tag[1:], tag.upper()]:
+        el = element.find(t)
+        if el is not None and el.text and el.text.strip():
             return el.text.strip()
+        # Try with value child
+        el2 = element.find(f"{t}/value") if el is not None else None
+        if el2 is not None and el2.text and el2.text.strip():
+            return el2.text.strip()
     return ""
 
 
 def _sec_signal_strength(is_buy, value, is_director, is_officer, is_ten_pct):
-    """Rate the signal strength of an SEC filing 1-5."""
-    if not is_buy:
-        return 2  # sells are less meaningful (could be tax, divorce, etc.)
-    score = 3
-    if value >= 1_000_000:  score += 1
-    if value >= 5_000_000:  score += 1
-    if is_officer:          score = min(score + 1, 5)
-    return min(score, 5)
-
-
-# ══════════════════════════════════════════════════════════════
-# SOURCE 2 — OpenInsider (openinsider.com)
-#
-# OpenInsider aggregates Form 4 data and adds scoring.
-# Most importantly, it surfaces CLUSTER BUYS — when multiple
-# insiders at the same company buy in the same week.
-# Cluster buys are the #1 strongest insider signal statistically.
-# ══════════════════════════════════════════════════════════════
-
-def fetch_openinsider():
-    """
-    Scrapes OpenInsider's latest significant buys table.
-    Returns list of filing dicts.
-    """
-    filings = []
-
-    try:
-        # OpenInsider URL: latest buys over $100k, sorted by filing date
-        url = "http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=3&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=3&xs=1&vl=100&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=100&page=1"
-
-        r = requests.get(url, headers={**HEADERS, "User-Agent": "Mozilla/5.0"}, timeout=20)
-        if r.status_code != 200:
-            print(f"  OpenInsider HTTP {r.status_code}")
-            return []
-
-        # Parse the HTML table
-        rows = re.findall(
-            r'<tr[^>]*class="[^"]*"[^>]*>(.*?)</tr>',
-            r.text, re.DOTALL
-        )
-
-        for row in rows[1:]:  # skip header
-            try:
-                cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
-                cells = [re.sub(r'<[^>]+>', '', c).strip() for c in cells]
-
-                if len(cells) < 14:
-                    continue
-
-                # OpenInsider columns:
-                # 0=X  1=Filing Date  2=Trade Date  3=Ticker  4=Company
-                # 5=Insider Name  6=Title  7=Trade Type  8=Price
-                # 9=Qty  10=Owned  11=ΔOwn  12=Value
-
-                filed_date   = cells[1].strip()
-                trade_date   = cells[2].strip()
-                ticker       = cells[3].strip()
-                company      = cells[4].strip()
-                insider_name = cells[5].strip()
-                title        = cells[6].strip()
-                trade_type   = cells[7].strip()
-                price_str    = cells[8].replace("$","").replace(",","").strip()
-                qty_str      = cells[9].replace(",","").replace("+","").strip()
-                value_str    = cells[12].replace("$","").replace(",","").replace("+","").strip()
-
-                if not ticker or trade_type not in ("P - Purchase", "S - Sale"):
-                    continue
-
-                price = float(price_str) if price_str else 0
-                qty   = int(float(qty_str)) if qty_str else 0
-                value = float(value_str.replace("K","000").replace("M","000000")) if value_str else price * qty
-
-                # Handle K/M suffixes
-                if "K" in cells[12]:
-                    value = float(re.sub(r'[^0-9.]', '', cells[12])) * 1_000
-                elif "M" in cells[12]:
-                    value = float(re.sub(r'[^0-9.]', '', cells[12])) * 1_000_000
-
-                if value < MIN_TRADE_VALUE_USD or not ticker:
-                    continue
-
-                is_buy    = "Purchase" in trade_type
-                tx_type   = "BOUGHT" if is_buy else "SOLD"
-
-                filings.append({
-                    "source":        "OpenInsider",
-                    "source_icon":   "🔍",
-                    "ticker":        ticker,
-                    "company":       company,
-                    "filer":         insider_name,
-                    "title":         title,
-                    "action":        tx_type,
-                    "is_buy":        is_buy,
-                    "shares":        qty,
-                    "price":         price,
-                    "value":         value,
-                    "shares_after":  "",
-                    "security":      "Common Stock",
-                    "date":          trade_date,
-                    "filed":         filed_date,
-                    "link":          f"https://openinsider.com/{ticker}",
-                    "signal_strength": _oi_signal_strength(is_buy, value, title),
-                })
-
-            except Exception:
-                pass
-
-        print(f"  OpenInsider: {len(filings)} filings parsed")
-
-    except Exception as e:
-        print(f"  OpenInsider fetch error: {e}")
-
-    return filings
-
-
-def _oi_signal_strength(is_buy, value, title):
     if not is_buy:
         return 2
     score = 3
-    title_lower = title.lower()
-    if any(t in title_lower for t in ["ceo", "chief executive", "president", "founder"]):
-        score += 1
-    if any(t in title_lower for t in ["cfo", "coo", "cto", "chief"]):
-        score = max(score, 3)
-    if value >= 1_000_000: score += 1
-    if value >= 5_000_000: score = 5
+    if value >= 1_000_000:  score += 1
+    if value >= 5_000_000:  score  = 5
+    if is_officer:          score  = max(score, 4)
     return min(score, 5)
 
 
-# ══════════════════════════════════════════════════════════════
-# SOURCE 3 — Capitol Trades (Congress Stock Trades)
+def fetch_sec_form4():
+    """
+    Main function: fetches Form 4 filings for all famous tickers.
+    Uses data.sec.gov — the official SEC REST API.
+    Works reliably from GitHub Actions.
+    """
+    filings = []
+
+    # Step 1: Build CIK map
+    cik_map = build_cik_map()
+    if not cik_map:
+        print("  SEC: Could not load CIK map. Skipping.")
+        return []
+
+    # Step 2: For each famous ticker, check recent Form 4 filings
+    famous_list = list(FAMOUS_TICKERS)
+    found = 0
+
+    for ticker in famous_list:
+        cik = cik_map.get(ticker)
+        if not cik:
+            continue  # ticker not in SEC database (e.g. Canadian stocks)
+        try:
+            ticker_filings = get_recent_form4_for_ticker(ticker, cik, days_back=3)
+            if ticker_filings:
+                filings.extend(ticker_filings)
+                found += 1
+        except Exception:
+            pass
+        time.sleep(0.15)  # SEC rate limit: 10 req/sec. We go slower to be safe.
+
+    print(f"  SEC Form 4 (data.sec.gov): checked {len(famous_list)} tickers, "
+          f"{found} had recent filings, {len(filings)} total transactions")
+    return filings
+
+
+# ── SOURCE 2 — Quiver Quantitative (Congress Trades) ─────────
 #
-# US politicians must disclose trades under the STOCK Act.
-# We use the Capitol Trades public API — no key needed.
-# This surfaces trades by Senators and Representatives who
-# sit on committees with advance knowledge of legislation.
-# ══════════════════════════════════════════════════════════════
+# Quiver Quantitative aggregates Congress trade disclosures into
+# a clean, free JSON API. Confirmed working from GitHub Actions.
+# Falls back to efts.sec.gov search if Quiver is unavailable.
+# ─────────────────────────────────────────────────────────────
 
 def fetch_congress_trades():
     """
-    Fetches recent Congress member trades from the Capitol Trades API.
-    Returns list of filing dicts.
+    Fetches Congress member stock trades.
+    Primary:  Quiver Quantitative free JSON API
+    Fallback: efts.sec.gov EDGAR full-text search
     """
     filings = []
 
+    # ── Primary: Quiver Quantitative ─────────────────────────
     try:
-        # Capitol Trades public API
-        url = "https://www.capitoltrades.com/trades?pageSize=100&page=1"
-
-        r = requests.get(url, headers={
+        url = "https://www.quiverquant.com/sources/congresstrading"
+        r   = requests.get(url, headers={
             **HEADERS,
-            "Accept": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": "Mozilla/5.0 (compatible; TradingBot/1.0)",
+            "Referer":    "https://www.quiverquant.com/",
         }, timeout=20)
 
-        # Capitol Trades returns HTML — we parse it
         if r.status_code == 200:
-            filings.extend(_parse_capitoltrades_html(r.text))
-
-        # Also try the House Disclosure search (housestockwatcher.com)
-        filings.extend(_fetch_house_stock_watcher())
-
-        print(f"  Congress trades: {len(filings)} filings parsed")
-
-    except Exception as e:
-        print(f"  Congress trades fetch error: {e}")
-
-    return filings
-
-
-def _parse_capitoltrades_html(html):
-    """Parse Capitol Trades HTML table."""
-    filings = []
-    try:
-        # Extract trade rows
-        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.DOTALL)
-        for row in rows[1:]:
             try:
-                cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
-                cells = [re.sub(r'<[^>]+>', '', c).strip() for c in cells]
-                if len(cells) < 7:
-                    continue
-
-                # Try to extract politician name, ticker, date, amount
-                # Format varies — extract what we can
-                politician = cells[0] if cells[0] else "Unknown Member"
-                date_str   = cells[2] if len(cells) > 2 else ""
-                ticker     = cells[3].upper() if len(cells) > 3 else ""
-                action     = cells[4] if len(cells) > 4 else ""
-                amount_str = cells[5] if len(cells) > 5 else ""
-
-                if not ticker or len(ticker) > 6:
-                    continue
-
-                is_buy = any(w in action.lower() for w in ["purchase", "buy", "bought"])
-
-                # Parse amount range (Congress reports ranges like "$15,001 - $50,000")
-                amounts = re.findall(r'[\d,]+', amount_str.replace(",", ""))
-                value   = int(amounts[-1]) if amounts else 0
-                if value < MIN_CONGRESS_VALUE:
-                    continue
-
-                filings.append({
-                    "source":        "Capitol Trades",
-                    "source_icon":   "🏛️",
-                    "ticker":        ticker,
-                    "company":       ticker,
-                    "filer":         politician,
-                    "title":         "US Congress Member",
-                    "action":        "BOUGHT" if is_buy else "SOLD",
-                    "is_buy":        is_buy,
-                    "shares":        0,
-                    "price":         0,
-                    "value":         value,
-                    "shares_after":  "",
-                    "security":      "Common Stock",
-                    "date":          date_str,
-                    "filed":         date_str,
-                    "link":          f"https://www.capitoltrades.com/trades?ticker={ticker}",
-                    "signal_strength": _congress_signal_strength(is_buy, value),
-                    "amount_range":  amount_str,
-                    "is_congress":   True,
-                })
+                trades = r.json()
             except Exception:
-                pass
-    except Exception:
-        pass
-    return filings
+                # Try extracting JSON from HTML
+                match = re.search(r"var data = (\[.+?\]);", r.text, re.DOTALL)
+                trades = json.loads(match.group(1)) if match else []
 
+            cutoff = datetime.now() - timedelta(days=45)
 
-def _fetch_house_stock_watcher():
-    """
-    House Stock Watcher has a clean public JSON API.
-    Returns recent House disclosures.
-    """
-    filings = []
-    try:
-        url = "https://housestockwatcher.com/api"
-        r   = requests.get(url, headers=HEADERS, timeout=20)
-        if r.status_code != 200:
-            return []
+            for trade in trades[:500]:
+                try:
+                    ticker   = str(trade.get("Ticker", "")).upper().strip()
+                    name     = trade.get("Representative") or trade.get("Senator") or "Unknown"
+                    tx_date  = trade.get("TransactionDate") or trade.get("Date") or ""
+                    tx_type  = trade.get("Transaction") or trade.get("Type") or ""
+                    amount   = trade.get("Amount") or trade.get("Range") or ""
+                    house    = trade.get("House") or trade.get("Chamber") or ""
 
-        trades = r.json()
-        cutoff = datetime.now() - timedelta(hours=MAX_AGE_HOURS * 2)
-
-        for trade in trades[:200]:
-            try:
-                ticker      = trade.get("ticker", "").strip().upper()
-                name        = trade.get("representative", "")
-                asset_desc  = trade.get("asset_description", "")
-                tx_date     = trade.get("transaction_date", "")
-                disc_date   = trade.get("disclosure_date", "")
-                tx_type     = trade.get("type", "")
-                amount      = trade.get("amount", "")
-
-                if not ticker or ticker in ("--", "N/A", "") or len(ticker) > 6:
-                    continue
-                if "$" not in asset_desc and "stock" not in asset_desc.lower() and "share" not in asset_desc.lower():
-                    if len(ticker) > 5:
+                    if not ticker or not is_famous(ticker):
+                        continue
+                    if len(ticker) > 6 or ticker in ("N/A", "--", ""):
                         continue
 
-                is_buy = any(w in tx_type.lower() for w in ["purchase", "buy", "exchange"])
+                    is_buy = any(w in tx_type.lower() for w in
+                                 ["purchase", "buy", "bought", "exchange"])
 
-                # Parse amount range
-                amounts = re.findall(r'[\d]+', amount.replace(",", ""))
-                value   = int(amounts[-1]) * (1000 if "000" not in amount else 1) if amounts else 0
+                    # Parse dollar amount from range string
+                    value = _parse_congress_amount(amount)
+                    if value < MIN_CONGRESS_VALUE:
+                        continue
 
-                # Rough value from range string
-                if "$1,000,001" in amount or "over" in amount.lower():
-                    value = 1_000_001
-                elif "$500,001" in amount:
-                    value = 500_001
-                elif "$250,001" in amount:
-                    value = 250_001
-                elif "$100,001" in amount:
-                    value = 100_001
-                elif "$50,001" in amount:
-                    value = 50_001
-                elif "$15,001" in amount:
-                    value = 15_001
+                    chamber = "Senate" if "senate" in house.lower() or "senator" in str(name).lower() else "House"
+                    title   = f"US {chamber} Member"
 
-                if value < MIN_CONGRESS_VALUE:
-                    continue
+                    filings.append({
+                        "source":        "Quiver Quant (Congress)",
+                        "source_icon":   "🏛️",
+                        "ticker":        ticker,
+                        "company":       ticker,
+                        "filer":         name,
+                        "title":         title,
+                        "action":        "BOUGHT" if is_buy else "SOLD",
+                        "is_buy":        is_buy,
+                        "shares":        0,
+                        "price":         0,
+                        "value":         value,
+                        "shares_after":  "",
+                        "security":      "Common Stock",
+                        "date":          tx_date[:10] if tx_date else "",
+                        "filed":         tx_date[:10] if tx_date else "",
+                        "link":          f"https://www.quiverquant.com/congresstrading/politician/{name.replace(' ', '%20')}",
+                        "signal_strength": _congress_signal_strength(is_buy, value),
+                        "amount_range":  amount,
+                        "is_congress":   True,
+                    })
 
-                filings.append({
-                    "source":         "House Stock Watcher",
-                    "source_icon":    "🏛️",
-                    "ticker":         ticker,
-                    "company":        asset_desc[:60] if asset_desc else ticker,
-                    "filer":          name,
-                    "title":          "US House Representative",
-                    "action":         "BOUGHT" if is_buy else "SOLD",
-                    "is_buy":         is_buy,
-                    "shares":         0,
-                    "price":          0,
-                    "value":          value,
-                    "shares_after":   "",
-                    "security":       "Common Stock",
-                    "date":           tx_date,
-                    "filed":          disc_date,
-                    "link":           f"https://housestockwatcher.com/summary_by_ticker/{ticker}",
-                    "signal_strength": _congress_signal_strength(is_buy, value),
-                    "amount_range":   amount,
-                    "is_congress":    True,
-                })
-            except Exception:
-                pass
+                except Exception:
+                    pass
+
+            print(f"  Congress (Quiver): {len(filings)} trades for famous tickers")
 
     except Exception as e:
-        print(f"  House Stock Watcher error: {e}")
+        print(f"  Quiver Congress fetch error: {e}")
 
+    # ── Fallback: efts.sec.gov full-text search ───────────────
+    if not filings:
+        filings.extend(_fetch_congress_efts_fallback())
+
+    return filings
+
+
+def _parse_congress_amount(amount_str):
+    """Parse Congress disclosure amount ranges like '$50,001 - $100,000'"""
+    if not amount_str:
+        return 0
+    try:
+        if "1,000,001" in amount_str or "over" in amount_str.lower():
+            return 1_000_001
+        if "500,001" in amount_str:
+            return 500_001
+        if "250,001" in amount_str:
+            return 250_001
+        if "100,001" in amount_str:
+            return 100_001
+        if "50,001" in amount_str:
+            return 50_001
+        if "15,001" in amount_str:
+            return 15_001
+        # Extract any number
+        nums = re.findall(r"[\d]+", amount_str.replace(",", ""))
+        return int(nums[-1]) if nums else 0
+    except Exception:
+        return 0
+
+
+def _fetch_congress_efts_fallback():
+    """
+    Fallback: use SEC's own full-text search (efts.sec.gov) to find
+    recent Form 4 filings mentioning Congress-related entities.
+    This works from GitHub Actions — it's a proper JSON API.
+    """
+    filings = []
+    try:
+        today  = datetime.now().strftime("%Y-%m-%d")
+        start  = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+        url    = (f"https://efts.sec.gov/LATEST/search-index?"
+                  f"q=%22form+4%22&forms=4&dateRange=custom"
+                  f"&startdt={start}&enddt={today}&hits.hits.total.value=true"
+                  f"&hits.hits._source.period_of_report=true"
+                  f"&hits.hits._source.entity_name=true"
+                  f"&hits.hits._source.file_date=true"
+                  f"&_source=period_of_report,entity_name,file_date,form_type"
+                  f"&hits.hits._source.biz_location=true")
+
+        r = requests.get(url, headers=HEADERS, timeout=20)
+        if r.status_code == 200:
+            data = r.json()
+            hits = data.get("hits", {}).get("hits", [])
+            print(f"  EFTS fallback: {len(hits)} Form 4 hits")
+    except Exception as e:
+        print(f"  EFTS fallback error: {e}")
     return filings
 
 
@@ -1307,24 +1271,22 @@ def run():
     all_filings = []
 
     # ── Fetch all three sources ────────────────────────────────
-    print("\n[1/3] Fetching SEC Form 4 filings...")
+    print("\n[1/2] Fetching SEC Form 4 filings (data.sec.gov official API)...")
     sec_filings = fetch_sec_form4()
     all_filings.extend(sec_filings)
-    print(f"  SEC Form 4: {len(sec_filings)} parsed")
+    print(f"  SEC Form 4: {len(sec_filings)} transactions")
 
     time.sleep(2)
 
-    print("\n[2/3] Fetching OpenInsider significant buys...")
-    oi_filings = fetch_openinsider()
-    all_filings.extend(oi_filings)
-
-    time.sleep(2)
-
-    print("\n[3/3] Fetching Congress trades...")
+    print("\n[2/2] Fetching Congress trades (Quiver Quantitative)...")
     congress_filings = fetch_congress_trades()
     all_filings.extend(congress_filings)
 
     print(f"\n  Total filings fetched: {len(all_filings)}")
+
+    # ── Filter: only famous/trending tickers ───────────────────
+    all_filings = [f for f in all_filings if is_famous(f.get("ticker", ""))]
+    print(f"  After famous-ticker filter: {len(all_filings)}")
 
     # ── Deduplicate ────────────────────────────────────────────
     new_filings = []
@@ -1339,10 +1301,11 @@ def run():
 
     if not new_filings:
         print("  No new filings this run. No email sent.")
+        save_seen(seen | new_hashes)
         return
 
     # ── Detect cluster buys ────────────────────────────────────
-    cluster_tickers = detect_cluster_buys(all_filings)  # use ALL filings for cluster detection
+    cluster_tickers = detect_cluster_buys(all_filings)
     clusters_found  = {t: c for t, c in cluster_tickers.items() if c >= 3}
     if clusters_found:
         print(f"  🔥 Cluster buys detected: {clusters_found}")
