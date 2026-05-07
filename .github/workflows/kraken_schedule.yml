@@ -8,7 +8,7 @@ on:
     # This job takes ~3-4 min × 96 times/day = ~330 min/day = fine.
     # Change to '*/5 * * * *' for every 5 min (uses ~700 min/day).
     # ─────────────────────────────────────────────────────────────
-    - cron: '*/15 * * * *'
+    - cron: '*/59 * * * *'
 
   # Also allows you to trigger it manually from the Actions tab
   workflow_dispatch:
