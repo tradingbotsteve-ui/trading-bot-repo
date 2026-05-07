@@ -1,0 +1,52 @@
+name: 🕵️ Phase 5 · Insider Watch
+
+on:
+  schedule:
+    # ─────────────────────────────────────────────────────────
+    # Runs every 30 minutes, 24 hours a day, 7 days a week.
+    #
+    # Why 30 min and not 15?
+    #   SEC Form 4 filings appear in batches, not continuously.
+    #   OpenInsider updates every ~20 min.
+    #   House Stock Watcher updates daily.
+    #   30 min gives the right balance: fast enough to act on
+    #   filings before the market moves, slow enough to stay
+    #   within GitHub Actions free tier (2,000 min/month).
+    #
+    #   30 min × 48 runs/day × ~4 min/run = ~192 min/day
+    #   Monthly: ~5,760 min — you will need GitHub Pro ($4/mo)
+    #   OR reduce to every 60 min to stay on free tier.
+    #
+    # To change to every 60 minutes: '0 * * * *'
+    # To change to every 15 minutes: '*/15 * * * *' (Pro needed)
+    # ─────────────────────────────────────────────────────────
+    - cron: '*/30 * * * *'
+
+  # Allows manual trigger from GitHub Actions tab anytime
+  workflow_dispatch:
+
+jobs:
+  insider-watch:
+    name: Check SEC Form 4 + Congress Disclosures
+    runs-on: ubuntu-latest
+    timeout-minutes: 25  # SEC parsing can be slow — give it room
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        # Only needs requests — no paid APIs, no keys required
+        run: pip install requests
+
+      - name: Run Phase 5 Insider Watch
+        env:
+          EMAIL_SENDER:    ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD:  ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+        run: python phase5_insider_watch.py
