@@ -1085,7 +1085,8 @@ def build_text_email(new_buys, new_sells, cluster_tickers):
     if congress:
         lines.append("\n🏛️ CONGRESS TRADES:")
         for f in congress:
-            lines.append(f"  ► {f['ticker']:<8} {f['filer']:<30} {f.get('amount_range', f'${f[\"value\"]:,.0f}')}")
+            amt = f.get("amount_range") or f"${f['value']:,.0f}"
+            lines.append(f"  ► {f['ticker']:<8} {f['filer']:<30} {amt}")
 
     if new_sells:
         lines.append("\n🔴 INSIDER SELLS (watch these):")
