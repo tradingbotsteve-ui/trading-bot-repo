@@ -20,7 +20,7 @@ on:
     # To change to every 60 minutes: '0 * * * *'
     # To change to every 15 minutes: '*/15 * * * *' (Pro needed)
     # ─────────────────────────────────────────────────────────
-    - cron: '*/30 * * * *'
+    - cron: '0 8,20 * * *'
 
   # Allows manual trigger from GitHub Actions tab anytime
   workflow_dispatch:
