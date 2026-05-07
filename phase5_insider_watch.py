@@ -72,6 +72,187 @@ MIN_CONGRESS_VALUE    = 15_000   # Congress reports ranges — $15k+ floor
 MAX_AGE_HOURS         = 72       # ignore filings older than 3 days
 SEEN_FILE             = "/tmp/phase5_seen_filings.json"   # dedup cache
 
+# ══════════════════════════════════════════════════════════════
+# FAMOUS & TRENDING STOCK WHITELIST
+#
+# Only alert on stocks that are:
+#   1. Household names — companies most people recognise
+#   2. High market cap — large influence on the broader market
+#   3. Actively traded — real liquidity, easy to buy/sell
+#   4. Trending in 2025-2026 narratives:
+#      AI, defence, energy, crypto, pharma, consumer, fintech
+#
+# If a ticker is NOT in this list it is silently ignored.
+# No obscure micro-caps, no penny stocks, no noise.
+#
+# Congress trades on any of these = very high signal because
+# these are the companies most affected by legislation.
+#
+# To add your own stock: just add its ticker to the set below.
+# ══════════════════════════════════════════════════════════════
+
+FAMOUS_TICKERS = {
+
+    # ── AI & Big Tech ─────────────────────────────────────────
+    "NVDA",   # Nvidia          — AI chips, most important AI company
+    "MSFT",   # Microsoft       — Azure AI, OpenAI partner, Copilot
+    "GOOGL",  # Alphabet A      — Google, Gemini AI, YouTube, Cloud
+    "GOOG",   # Alphabet C      — same company, different share class
+    "META",   # Meta            — Facebook, Instagram, Llama AI
+    "AMZN",   # Amazon          — AWS cloud, largest e-commerce
+    "AAPL",   # Apple           — iPhone, Mac, Apple Intelligence
+    "TSLA",   # Tesla           — EVs, Robotaxis, Optimus robot
+    "ORCL",   # Oracle          — cloud database, AI infrastructure
+    "IBM",    # IBM             — enterprise AI, Watson
+    "PLTR",   # Palantir        — AI for government and defence
+    "AI",     # C3.ai           — enterprise AI software
+    "SNOW",   # Snowflake       — AI data cloud
+    "DDOG",   # Datadog         — AI-powered monitoring
+    "CRM",    # Salesforce      — AI CRM, Einstein
+    "NOW",    # ServiceNow      — AI enterprise workflows
+    "ADBE",   # Adobe           — AI creative tools, Firefly
+    "PATH",   # UiPath          — AI automation
+
+    # ── Semiconductors ────────────────────────────────────────
+    "AMD",    # AMD             — AI chips competing with Nvidia
+    "INTC",   # Intel           — chips, foundry, turnaround play
+    "QCOM",   # Qualcomm        — mobile chips, AI on device
+    "AVGO",   # Broadcom        — AI networking chips
+    "AMAT",   # Applied Materials — chip manufacturing equipment
+    "ASML",   # ASML            — only company making EUV machines
+    "TSM",    # TSMC            — makes chips for Nvidia, Apple, AMD
+    "MU",     # Micron          — AI memory chips (HBM)
+    "ARM",    # ARM Holdings    — chip architecture in every phone
+    "SMCI",   # Super Micro     — AI server builder
+    "MCHP",   # Microchip       — embedded chips
+
+    # ── Crypto & Fintech ──────────────────────────────────────
+    "COIN",   # Coinbase        — largest US crypto exchange
+    "MSTR",   # MicroStrategy   — largest corporate Bitcoin holder
+    "HOOD",   # Robinhood       — retail trading, crypto
+    "SOFI",   # SoFi            — digital bank, crypto
+    "PYPL",   # PayPal          — digital payments
+    "SQ",     # Block (Square)  — Bitcoin, payments
+    "V",      # Visa            — payments infrastructure
+    "MA",     # Mastercard      — payments infrastructure
+    "MARA",   # Marathon Digital — Bitcoin mining
+    "RIOT",   # Riot Platforms  — Bitcoin mining
+    "AXP",    # American Express — premium credit cards
+
+    # ── Defence & Aerospace ───────────────────────────────────
+    "LMT",    # Lockheed Martin — F-35, missiles, space
+    "RTX",    # Raytheon        — missiles, radar, Patriot system
+    "NOC",    # Northrop Grumman — B-21 bomber, drones
+    "GD",     # General Dynamics — submarines, Gulfstream jets
+    "BA",     # Boeing          — planes, defence contracts
+    "KTOS",   # Kratos          — drones, hypersonics
+    "HEI",    # HEICO           — defence aerospace parts
+    "TDG",    # TransDigm       — defence aerospace components
+    "LUNR",   # Intuitive Machines — Moon missions, NASA
+    "RKLB",   # Rocket Lab      — small rockets, space
+
+    # ── Energy & Clean Energy ─────────────────────────────────
+    "XOM",    # ExxonMobil      — oil supermajor
+    "CVX",    # Chevron         — oil supermajor
+    "COP",    # ConocoPhillips  — oil and gas
+    "NEE",    # NextEra         — largest clean energy company
+    "ENPH",   # Enphase         — solar microinverters
+    "FSLR",   # First Solar     — solar panels, US-made
+    "OXY",    # Occidental      — Warren Buffett's oil bet
+    "LNG",    # Cheniere        — LNG exports
+    "VST",    # Vistra          — nuclear power for AI data centres
+    "CEG",    # Constellation Energy — nuclear, Microsoft deal
+
+    # ── Healthcare & Pharma & Biotech ─────────────────────────
+    "LLY",    # Eli Lilly       — Ozempic/Mounjaro weight loss drugs
+    "NVO",    # Novo Nordisk    — Ozempic original maker
+    "ABBV",   # AbbVie          — Humira, Skyrizi, immunology
+    "JNJ",    # Johnson & Johnson — pharma, medtech
+    "PFE",    # Pfizer          — vaccines, oncology
+    "MRK",    # Merck           — Keytruda cancer drug
+    "AMGN",   # Amgen           — biotech, weight loss drugs
+    "GILD",   # Gilead          — HIV, liver disease
+    "MRNA",   # Moderna         — mRNA cancer vaccines
+    "REGN",   # Regeneron       — eye disease, weight loss
+    "ISRG",   # Intuitive Surgical — robotic surgery
+    "DXCM",   # Dexcom          — continuous glucose monitors
+    "VRTX",   # Vertex          — cystic fibrosis, gene editing
+
+    # ── Financial & Banks ─────────────────────────────────────
+    "JPM",    # JPMorgan        — largest US bank
+    "BAC",    # Bank of America — major US bank
+    "GS",     # Goldman Sachs   — investment banking
+    "MS",     # Morgan Stanley  — wealth management
+    "BLK",    # BlackRock       — world's largest asset manager
+    "BRK.B",  # Berkshire       — Warren Buffett's conglomerate
+    "C",      # Citigroup       — global bank
+    "WFC",    # Wells Fargo     — major US bank
+    "SCHW",   # Charles Schwab  — retail brokerage
+
+    # ── Consumer & Retail ─────────────────────────────────────
+    "WMT",    # Walmart         — world's largest retailer
+    "COST",   # Costco          — membership warehouse retail
+    "TGT",    # Target          — US retail
+    "NKE",    # Nike            — sportswear
+    "SBUX",   # Starbucks       — coffee, turnaround story
+    "MCD",    # McDonald's      — fast food
+    "CMG",    # Chipotle        — fast casual
+    "LULU",   # Lululemon       — athletic wear
+
+    # ── Media & Entertainment ─────────────────────────────────
+    "NFLX",   # Netflix         — streaming, ads + gaming
+    "DIS",    # Disney          — streaming, parks, ESPN
+    "SPOT",   # Spotify         — music streaming
+    "RBLX",   # Roblox          — gaming metaverse
+    "TTWO",   # Take-Two        — GTA VI publisher (huge 2026)
+    "EA",     # Electronic Arts — gaming
+
+    # ── Electric Vehicles & Mobility ──────────────────────────
+    "RIVN",   # Rivian          — electric trucks, Amazon vans
+    "F",      # Ford            — F-150 Lightning, EV transition
+    "GM",     # General Motors  — EVs, Cruise robotaxi
+    "UBER",   # Uber            — rides, delivery, autonomous
+    "LYFT",   # Lyft            — rides
+
+    # ── Data Centres & Cloud Infrastructure ───────────────────
+    "AMT",    # American Tower  — cell towers
+    "EQIX",   # Equinix         — data centres
+    "DLR",    # Digital Realty  — data centres
+    "PLD",    # Prologis        — warehouses, logistics
+    "DELL",   # Dell            — AI server infrastructure
+    "NET",    # Cloudflare      — AI edge computing, security
+
+    # ── Cybersecurity ─────────────────────────────────────────
+    "CRWD",   # CrowdStrike     — cybersecurity AI
+    "PANW",   # Palo Alto Networks — cybersecurity
+    "ZS",     # Zscaler         — cloud security
+    "OKTA",   # Okta            — identity security
+    "S",      # SentinelOne     — AI cybersecurity
+
+    # ── Quantum Computing ─────────────────────────────────────
+    "IONQ",   # IonQ            — quantum computing
+    "RGTI",   # Rigetti         — quantum computing
+    "QUBT",   # Quantum Computing Inc — quantum
+
+    # ── Canadian Stocks (TSX) ─────────────────────────────────
+    "SHOP",   # Shopify         — e-commerce platform
+    "RY",     # Royal Bank      — largest Canadian bank
+    "TD",     # TD Bank         — major Canadian bank
+    "CNR",    # CN Rail         — Canadian railways
+    "SU",     # Suncor          — Canadian oil sands
+    "ENB",    # Enbridge        — oil/gas pipelines
+    "ATD",    # Couche-Tard     — convenience stores worldwide
+    "CP",     # CP Rail         — Canadian railways
+    "BAM",    # Brookfield      — global asset manager
+    "BCE",    # BCE             — Canadian telecom
+}
+
+
+def is_famous(ticker):
+    """Returns True if ticker is in our famous/trending watchlist."""
+    clean = ticker.upper().strip().replace("-", ".")
+    return clean in FAMOUS_TICKERS
+
 # ── REQUEST HEADERS ──────────────────────────────────────────
 # SEC requires a real User-Agent identifying your app and contact
 HEADERS = {
