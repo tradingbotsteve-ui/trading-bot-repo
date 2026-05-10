@@ -1,59 +1,56 @@
 # ============================================================
-# TRADING BOT — PHASE 6 (Trump Market Monitor)
+# TRADING BOT — PHASE 6 (Market Movers Monitor)
 #
-# Donald Trump is the most market-moving person on the planet.
-# One post on Truth Social can move a stock 20-40% in minutes.
-# This phase catches those moments and emails you INSTANTLY.
+# Tracks statements from the 20 most market-moving people
+# on the planet — right now, in 2026.
 #
-# ── WHAT IT MONITORS ────────────────────────────────────────
+# When any of them says something that could move stocks,
+# you get an email instantly with exactly what to buy,
+# what direction the stock will likely move, and why.
 #
-#   SOURCE 1 — CNN Truth Social Archive (ix.cnn.io)
-#     CNN maintains a live JSON archive of every Trump Truth
-#     Social post, updated every 5 minutes. Public, no key.
-#     This is the fastest reliable source available.
+# ── THE 20 PEOPLE WE TRACK ──────────────────────────────────
 #
-#   SOURCE 2 — trumpstruth.org RSS Feed
-#     Independent archive with an RSS feed. Acts as backup
-#     if CNN's archive is slow or down.
+#  TIER 1 — Can move entire markets with one sentence
+#   1. Donald Trump      — President, tariffs, trade, energy
+#   2. Elon Musk         — Tesla, SpaceX, X, DOGE, AI
+#   3. Kevin Warsh       — New Fed Chair (May 15, 2026), rates
+#   4. Jerome Powell     — Outgoing Fed Chair, still on board
+#   5. Warren Buffett    — Oracle of Omaha, Berkshire, markets
 #
-#   SOURCE 3 — Google News RSS (Trump + stock/market)
-#     Catches mainstream media stories about Trump mentioning
-#     specific companies — tariffs, deals, endorsements etc.
-#     Google News RSS is free, no key, works from any server.
+#  TIER 2 — Move sectors or specific stocks significantly
+#   6. Jensen Huang      — Nvidia CEO, AI chips, export controls
+#   7. Jamie Dimon       — JPMorgan CEO, banking, economy
+#   8. Sam Altman        — OpenAI CEO, AI regulation, Microsoft
+#   9. Scott Bessent     — Treasury Secretary, tariffs, dollar
+#  10. Mark Zuckerberg   — Meta CEO, AI, social media regulation
 #
-# ── WHAT TRIGGERS AN EMAIL ──────────────────────────────────
+#  TIER 3 — Move their industry or specific companies
+#  11. Tim Cook          — Apple CEO, China, supply chain
+#  12. Satya Nadella     — Microsoft CEO, Azure, AI, OpenAI
+#  13. Andy Jassy        — Amazon CEO, AWS, retail, labour
+#  14. Larry Ellison     — Oracle CEO, AI infrastructure, cloud
+#  15. RFK Jr (Robert Kennedy Jr) — HHS Secretary, pharma/vaccines
 #
-#   The script scans every post/article for:
-#     • Company names (Apple, Tesla, Nvidia etc.)
-#     • Stock ticker symbols ($AAPL, $TSLA etc.)
-#     • Market-moving keywords (tariff, deal, ban, buy etc.)
-#     • Sector mentions (AI, oil, defence, pharma etc.)
+#  TIER 4 — Macro, geopolitical, sector specialists
+#  16. Xi Jinping        — China President, trade war, Taiwan
+#  17. Mario Draghi      — EU economy, Europe policy
+#  18. MBS (Mohammed bin Salman) — Saudi Arabia, OPEC, oil
+#  19. Cathie Wood       — ARK Invest, tech/innovation, sentiment
+#  20. Michael Burry     — Short seller, market crash signals
 #
-#   Email fires ONLY when a post contains something
-#   that could move a stock. Pure political posts = ignored.
+# ── DATA SOURCES (all free, all work from GitHub Actions) ───
+#  • CNN Truth Social Archive — Trump posts, 5-min updates
+#  • trumpstruth.org RSS     — Backup Trump source
+#  • Google News RSS         — All 20 people, real-time news
+#  • Yahoo Finance RSS       — Market-moving quotes + headlines
 #
-# ── THE "TRUMP EFFECT" — HOW TO USE THIS ────────────────────
-#
-#   When Trump mentions a company positively:
-#     → Stock often spikes 5-40% within minutes of the post
-#     → Buy within the first 30-60 minutes for best gains
-#     → Set a stop loss at -5% immediately after buying
-#     → Take profit at +15-25% or when the news cycle moves on
-#     → Hold no longer than 1-3 days for Trump-pump trades
-#
-#   When Trump attacks a company (tariffs, boycotts):
-#     → Stock often drops 5-20% immediately
-#     → Do NOT buy the dip immediately — let it stabilize
-#     → Wait 2-3 days, then consider buying if fundamentals good
-#
-#   When Trump mentions a SECTOR (AI, oil, defence):
-#     → ETFs and sector leaders move together
-#     → Broader play, lower risk than single stock
-#
-# ── TIMING ──────────────────────────────────────────────────
-#   Runs every 5 minutes via GitHub Actions.
-#   De-duplicates: you will NOT get the same post twice.
-#   No email = nothing market-moving detected. Go live your life.
+# ── WHAT YOU GET IN EVERY EMAIL ─────────────────────────────
+#  • WHO said it (photo emoji, tier, why they matter)
+#  • WHAT they said (the exact quote/headline)
+#  • WHICH stocks move (ticker, company name, direction)
+#  • WHY it matters (plain English, no jargon)
+#  • WHAT TO DO (specific action for your TFSA)
+#  • HOW LONG TO HOLD (and the exit signal)
 #
 # SECRETS (GitHub → Settings → Secrets → Actions):
 #   EMAIL_SENDER    — your Gmail address
@@ -79,181 +76,435 @@ EMAIL_PASSWORD  = "".join(c for c in _raw_pw if ord(c) < 128 and c not in (" ", 
 EMAIL_SENDER    = os.environ.get("EMAIL_SENDER",    "your@gmail.com")
 EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT", "your@gmail.com")
 
-SEEN_FILE = "/tmp/phase6_seen_posts.json"
-
-HEADERS = {
+SEEN_FILE = "/tmp/phase6_seen.json"
+HEADERS   = {
     "User-Agent": "Mozilla/5.0 (compatible; TradingBot/6.0; research)",
     "Accept":     "application/json, text/html, application/xml, */*",
 }
 
+
 # ══════════════════════════════════════════════════════════════
-# STOCK & COMPANY KNOWLEDGE BASE
+# THE 20 MARKET MOVERS
 #
-# Maps company names and keywords → ticker symbols.
-# When Trump mentions any of these, the bot fires an alert.
-#
-# Format:
-#   "keyword to detect in post": ("TICKER", "Full Company Name",
-#                                  "why this matters", sentiment_bias)
-#
-# sentiment_bias:
-#   "positive"  — Trump praise usually pumps this stock
-#   "negative"  — Trump attacking this usually dumps it
-#   "neutral"   — could go either way depending on context
-#   "sector"    — broad sector mention, multiple stocks move
+# Each person has:
+#   tier       — 1 (moves whole market) to 4 (moves sectors)
+#   emoji      — visual identifier in emails
+#   role       — current title as of May 2026
+#   why        — why they move markets
+#   keywords   — words that identify their statements in news
+#   stocks     — stocks most affected by their statements
+#   sentiment_bias — does positive news from them = markets up?
 # ══════════════════════════════════════════════════════════════
 
-COMPANY_MAP = {
+MARKET_MOVERS = {
 
-    # ── Big Tech ──────────────────────────────────────────────
-    "apple":       ("AAPL",  "Apple Inc.",           "World's most valuable company. Trump/China tariff tensions directly impact Apple's supply chain.", "neutral"),
-    "iphone":      ("AAPL",  "Apple Inc.",           "iPhone = Apple. Any tariff or trade deal news hits AAPL immediately.", "neutral"),
-    "microsoft":   ("MSFT",  "Microsoft",            "Azure cloud + OpenAI. Trump AI policy directly affects MSFT.", "positive"),
-    "google":      ("GOOGL", "Alphabet (Google)",    "Antitrust and AI regulation. Trump DOJ stance matters enormously.", "neutral"),
-    "alphabet":    ("GOOGL", "Alphabet (Google)",    "Same as Google.", "neutral"),
-    "meta":        ("META",  "Meta Platforms",       "Facebook/Instagram. Trump was banned from both. Relations are complex.", "neutral"),
-    "facebook":    ("META",  "Meta Platforms",       "Same as Meta.", "neutral"),
-    "amazon":      ("AMZN",  "Amazon",               "AWS cloud, retail dominance. Trump has historically attacked Amazon/Bezos.", "negative"),
-    "bezos":       ("AMZN",  "Amazon",               "Jeff Bezos = Amazon. Trump-Bezos relationship directly affects AMZN.", "neutral"),
-    "tesla":       ("TSLA",  "Tesla",                "Elon Musk is Trump's ally. Tesla benefits enormously from positive Trump/Musk news.", "positive"),
-    "elon":        ("TSLA",  "Tesla",                "Elon Musk owns Tesla, SpaceX, X. Trump mentions = TSLA moves.", "positive"),
-    "musk":        ("TSLA",  "Tesla",                "Elon Musk. TSLA, DOGE, SpaceX all move on Trump-Musk news.", "positive"),
-    "nvidia":      ("NVDA",  "Nvidia",               "AI chip king. Export controls, China chip bans — Trump controls these directly.", "neutral"),
-    "nvidia chip": ("NVDA",  "Nvidia",               "Chip export ban/allow to China. Trump's single most impactful lever on NVDA.", "neutral"),
-    "openai":      ("MSFT",  "Microsoft (OpenAI)",   "Microsoft owns OpenAI stake. AI regulation from Trump = MSFT impact.", "positive"),
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # TIER 1 — MOVES ENTIRE MARKET WITH ONE SENTENCE
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    # ── Media & Trump-Related ─────────────────────────────────
-    "truth social":("DJT",   "Trump Media & Technology", "Trump's own company. Any mention by Trump = DJT moves violently.", "positive"),
-    "trump media": ("DJT",   "Trump Media & Technology", "Same as Truth Social. DJT is Trump's personal brand stock.", "positive"),
-    "fox":         ("FOX",   "Fox Corporation",      "Trump's preferred media outlet. Fox news + Trump = high correlation.", "positive"),
-    "fox news":    ("FOX",   "Fox Corporation",      "Same as Fox.", "positive"),
-    "nbc":         ("CMCSA", "Comcast (NBC)",         "Trump often attacks NBC/Comcast as fake news. Can drop on attacks.", "negative"),
-    "cnn":         ("WBD",   "Warner Bros Discovery","Trump attacks CNN constantly. Owned by Warner Bros Discovery.", "negative"),
-    "disney":      ("DIS",   "Disney",               "Trump has clashed with Disney over political content. Watch for attacks.", "negative"),
-    "netflix":     ("NFLX",  "Netflix",              "Streaming wars + content regulation. Trump mentions = NFLX moves.", "neutral"),
+    "trump": {
+        "name":    "Donald Trump",
+        "tier":    1,
+        "emoji":   "🇺🇸",
+        "role":    "47th US President",
+        "why":     "Controls tariffs, trade deals, energy policy, sanctions, and regulatory appointments. Single most market-moving person alive. A single Truth Social post has moved the S&P 500 by 3-5% in minutes.",
+        "keywords": ["trump", "donald trump", "white house", "president trump", "truth social", "mar-a-lago", "executive order", "tariff", "trade deal"],
+        "primary_stocks": {
+            "SPY":  ("S&P 500 ETF",    "Broad market — moves on anything Trump says about economy"),
+            "XOM":  ("ExxonMobil",     "'Drill baby drill' — Trump loves US energy production"),
+            "LMT":  ("Lockheed Martin","Defence spending — Trump = more military contracts"),
+            "DJT":  ("Trump Media",    "His own company — pumps on any positive Trump attention"),
+            "COIN": ("Coinbase",       "Trump is pro-crypto — any crypto policy statement"),
+        },
+        "color": "#B71C1C",
+        "bg":    "#FFEBEE",
+        "source": "truth_social",
+    },
 
-    # ── Finance & Crypto ─────────────────────────────────────
-    "bitcoin":     ("MSTR",  "MicroStrategy + BTC",  "Trump is pro-crypto. Any BTC mention from Trump pumps the whole crypto market.", "positive"),
-    "crypto":      ("COIN",  "Coinbase",             "Trump pro-crypto stance. Regulatory clarity = COIN pumps.", "positive"),
-    "coinbase":    ("COIN",  "Coinbase",             "Largest US crypto exchange. Direct beneficiary of Trump crypto policy.", "positive"),
-    "gold":        ("GLD",   "SPDR Gold ETF",        "Safe haven. Trump uncertainty = gold up.", "positive"),
-    "federal reserve":("JPM","JPMorgan + Banks",     "Fed policy = bank stocks move. Trump vs Fed is a major market driver.", "neutral"),
-    "interest rate":("JPM",  "JPMorgan + Banks",     "Rate commentary from Trump moves entire financial sector.", "neutral"),
-    "jpmorgan":    ("JPM",   "JPMorgan Chase",       "Largest US bank. Jamie Dimon relationship with Trump matters.", "neutral"),
-    "goldman":     ("GS",    "Goldman Sachs",        "Investment banking giant. Trump admin = Goldman alumni everywhere.", "positive"),
-    "blackrock":   ("BLK",   "BlackRock",            "World's largest asset manager. Trump mentions = BLK moves.", "neutral"),
+    "musk": {
+        "name":    "Elon Musk",
+        "tier":    1,
+        "emoji":   "🚀",
+        "role":    "CEO Tesla/SpaceX/X · DOGE Advisor",
+        "why":     "Owns Tesla, SpaceX, X (Twitter). His tweets have moved markets billions of dollars in minutes. SpaceX IPO coming in 2026. DOGE government cuts affect defence and gov't contractor stocks. Musk-Trump relationship is the most powerful in business.",
+        "keywords": ["elon musk", "elon", "musk", "tesla", "spacex", "x.com", "doge", "grok", "xai", "starship", "starlink", "neuralink", "optimus robot"],
+        "primary_stocks": {
+            "TSLA": ("Tesla",          "His flagship company — every Musk statement moves TSLA"),
+            "RKLB": ("Rocket Lab",     "SpaceX competitor — SpaceX news affects the whole sector"),
+            "DOGE": ("Dogecoin proxy", "Musk invented the DOGE meme — crypto pumps on his mentions"),
+            "NVDA": ("Nvidia",         "xAI uses Nvidia chips — Grok/AI news moves NVDA"),
+        },
+        "color": "#1a1a2e",
+        "bg":    "#E8EAF6",
+        "source": "news",
+    },
 
-    # ── Energy & Oil ─────────────────────────────────────────
-    "oil":         ("XOM",   "ExxonMobil + Sector",  "'Drill baby drill' = oil stocks pump. Trump loves domestic energy production.", "positive"),
-    "drill":       ("XOM",   "ExxonMobil",           "Trump's signature energy phrase. DRILL = oil stocks go up immediately.", "positive"),
-    "exxon":       ("XOM",   "ExxonMobil",           "Largest US oil company. Trump pro-oil policy benefits XOM directly.", "positive"),
-    "chevron":     ("CVX",   "Chevron",              "Major US oil company. Same as Exxon on Trump energy policy.", "positive"),
-    "lng":         ("LNG",   "Cheniere Energy",      "Liquefied natural gas exports. Trump pushes LNG — direct LNG beneficiary.", "positive"),
-    "natural gas":("LNG",   "Cheniere Energy",       "Same as LNG above.", "positive"),
-    "solar":       ("FSLR",  "First Solar",          "US-made solar. Trump tariffs protect domestic solar from China competition.", "positive"),
-    "nuclear":     ("CEG",   "Constellation Energy", "Nuclear power for AI data centres. Trump pro-nuclear = CEG pumps.", "positive"),
-    "coal":        ("ARCH",  "Arch Resources (Coal)","Trump is pro-coal. Any coal mention = coal stocks spike.", "positive"),
+    "warsh": {
+        "name":    "Kevin Warsh",
+        "tier":    1,
+        "emoji":   "🏦",
+        "role":    "New Federal Reserve Chair (from May 15, 2026)",
+        "why":     "Replacing Jerome Powell as Fed Chair on May 15, 2026. Controls US interest rates — the single most important variable for ALL stock valuations. Warsh wants to shrink the Fed's $6.7 trillion balance sheet, which could push rates UP. First statements as Chair will be enormously market-moving. Every word he says will be analysed by every trader on earth.",
+        "keywords": ["kevin warsh", "warsh", "federal reserve", "fed chair", "fomc", "interest rate", "rate cut", "rate hike", "quantitative", "balance sheet", "monetary policy", "fed meeting"],
+        "primary_stocks": {
+            "JPM":  ("JPMorgan Chase", "Banks love rate clarity — Warsh statements move all banks"),
+            "SPY":  ("S&P 500",        "Rate changes affect every stock — broad market impact"),
+            "GLD":  ("Gold ETF",       "Gold moves inversely to rate expectations"),
+            "TLT":  ("Treasury Bonds", "Bond prices move directly on Fed balance sheet decisions"),
+            "SCHW": ("Charles Schwab", "Brokerage stocks sensitive to interest rate environment"),
+        },
+        "color": "#0d47a1",
+        "bg":    "#E3F2FD",
+        "source": "news",
+    },
 
-    # ── Defence & Aerospace ───────────────────────────────────
-    "lockheed":    ("LMT",   "Lockheed Martin",      "F-35 maker. Trump defence spending and contract news moves LMT.", "positive"),
-    "raytheon":    ("RTX",   "Raytheon Technologies","Missiles, Patriot systems. Ukraine/NATO/Middle East spending = RTX up.", "positive"),
-    "boeing":      ("BA",    "Boeing",               "Planes + defence. Trump often criticises Boeing pricing on AF One etc.", "neutral"),
-    "northrop":    ("NOC",   "Northrop Grumman",     "B-21 bomber, drones. Defence budget = NOC.", "positive"),
-    "ukraine":     ("RTX",   "Raytheon",             "Ukraine war aid = defence stocks. Trump ceasefire = defence stocks drop.", "negative"),
-    "nato":        ("LMT",   "Lockheed Martin",      "NATO spending commitments = defence stocks move with every Trump statement.", "positive"),
-    "military":    ("LMT",   "Lockheed Martin",      "Defence sector umbrella. Trump military spending = sector-wide move.", "positive"),
-    "space force": ("LMT",   "Lockheed Martin",      "Space Force = Lockheed and Northrop get contracts.", "positive"),
-    "spacex":      ("RKLB",  "Rocket Lab",           "SpaceX competitor. Musk's SpaceX = government contracts, affects RKLB.", "neutral"),
+    "powell": {
+        "name":    "Jerome Powell",
+        "tier":    1,
+        "emoji":   "🏛️",
+        "role":    "Outgoing Fed Chair · Fed Governor until 2028",
+        "why":     "Still on the Fed board after stepping down as Chair May 15. His votes and public statements can contradict new Chair Warsh, creating market confusion and volatility. Described as potentially the most disruptive 'ex-chair still in the room' in Fed history.",
+        "keywords": ["jerome powell", "powell", "fed governor", "fomc vote", "rate decision", "inflation target", "federal reserve"],
+        "primary_stocks": {
+            "SPY":  ("S&P 500",        "Broad market — rate uncertainty = volatility across all stocks"),
+            "TLT":  ("Treasury Bonds", "Bond yields react immediately to Powell statements"),
+            "GLD":  ("Gold",           "Safe haven — uncertainty from Powell vs Warsh = gold up"),
+        },
+        "color": "#37474f",
+        "bg":    "#ECEFF1",
+        "source": "news",
+    },
 
-    # ── Pharma & Healthcare ───────────────────────────────────
-    "pharma":      ("LLY",   "Eli Lilly + Sector",   "Drug pricing is a Trump battleground. Price caps = pharma drops.", "negative"),
-    "drug":        ("PFE",   "Pfizer",               "Drug prices, patents. Trump drug pricing policy = entire pharma sector moves.", "negative"),
-    "eli lilly":   ("LLY",   "Eli Lilly",            "Ozempic maker. Weight loss drugs + Medicare negotiation = LLY moves.", "negative"),
-    "medicare":    ("UNH",   "UnitedHealth Group",   "Health insurance giant. Medicare policy = UNH moves significantly.", "negative"),
-    "fda":         ("MRNA",  "Moderna",              "FDA regulation. Trump FDA head = drug approval/rejection speed changes.", "neutral"),
-    "vaccine":     ("MRNA",  "Moderna",              "Moderna, Pfizer COVID vaccines. RFK Jr + Trump vaccine stance = MRNA drops.", "negative"),
-    "rfk":         ("MRNA",  "Moderna",              "RFK Jr is Trump's HHS head. Anti-vax = MRNA, PFE, vaccine stocks drop.", "negative"),
+    "buffett": {
+        "name":    "Warren Buffett",
+        "tier":    1,
+        "emoji":   "🏆",
+        "role":    "CEO Berkshire Hathaway · Oracle of Omaha",
+        "why":     "When Buffett speaks, institutions listen. He predicted the 2025 market rout by selling $134B in stocks in 2024 and holding $334B cash. Up $12.7B in 2026 while others lost billions. When he buys or sells, the stock moves 10-30%. His annual letter and Berkshire AGM move markets globally.",
+        "keywords": ["warren buffett", "buffett", "berkshire hathaway", "berkshire", "omaha", "value investing", "oracle of omaha", "buy american", "annual letter"],
+        "primary_stocks": {
+            "BRK.B":("Berkshire Hathaway","His company — any Buffett news moves BRK directly"),
+            "AAPL": ("Apple",          "Berkshire's #1 holding — Buffett buy/sell = AAPL moves"),
+            "BAC":  ("Bank of America","Major Berkshire holding — Buffett banking stance matters"),
+            "OXY":  ("Occidental Petroleum","Buffett's oil bet — he's been buying heavily"),
+            "KO":   ("Coca-Cola",      "Classic Buffett holding since 1988 — long-term signal"),
+        },
+        "color": "#1B5E20",
+        "bg":    "#E8F5E9",
+        "source": "news",
+    },
 
-    # ── Retail & Consumer ────────────────────────────────────
-    "walmart":     ("WMT",   "Walmart",              "World's largest retailer. Tariffs hit Walmart's China-sourced products hard.", "negative"),
-    "amazon prime":("AMZN",  "Amazon",               "Amazon Prime = AMZN. Tariffs increase costs.", "negative"),
-    "tariff":      ("WMT",   "Retail Sector",        "TARIFFS are Trump's biggest market mover. Retail, consumer goods, tech all react.", "negative"),
-    "trade war":   ("WMT",   "Retail + Tech Sector", "Trade war = broad market selloff. China trade = massive cross-sector impact.", "negative"),
-    "china":       ("NVDA",  "Nvidia + Tech Sector", "China trade relations = Nvidia export controls, Apple supply chain, Tesla sales.", "negative"),
-    "tariffs":     ("WMT",   "Retail Sector",        "Same as tariff.", "negative"),
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # TIER 2 — MOVE SECTORS OR SPECIFIC STOCKS SIGNIFICANTLY
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    # ── Autos & EV ───────────────────────────────────────────
-    "ford":        ("F",     "Ford Motor",           "Ford EVs and tariffs. Canadian/Mexican tariffs hurt Ford production.", "negative"),
-    "gm":          ("GM",    "General Motors",       "GM makes cars in Mexico. Trump tariffs = GM production cost spike.", "negative"),
-    "general motors":("GM",  "General Motors",       "Same as GM.", "negative"),
-    "electric vehicle":("TSLA","Tesla + EV Sector",  "EV policy — subsidies, mandates. Trump anti-EV policy hurts sector except TSLA.", "neutral"),
-    "ev":          ("RIVN",  "Rivian + EV Sector",   "EV subsidies and mandates. Trump ends EV mandates = Rivian, Lucid drop.", "negative"),
-    "rivian":      ("RIVN",  "Rivian",               "EV truck maker. Amazon partnership. Subsidy changes hit RIVN.", "negative"),
+    "jensen": {
+        "name":    "Jensen Huang",
+        "tier":    2,
+        "emoji":   "🤖",
+        "role":    "CEO Nvidia · King of AI Chips",
+        "why":     "Controls the picks-and-shovels of the AI gold rush. Every data centre being built uses Nvidia chips. His guidance calls move NVDA 10-20% in after-hours. Export controls on chips to China = $15B+ revenue impact. His word is law in AI.",
+        "keywords": ["jensen huang", "jensen", "nvidia", "h100", "h200", "blackwell", "cuda", "gpu", "ai chip", "data center chip", "export control chip"],
+        "primary_stocks": {
+            "NVDA": ("Nvidia",         "His company — Jensen statements are the #1 NVDA catalyst"),
+            "AMD":  ("AMD",            "Nvidia competitor — NVDA news moves AMD in same direction"),
+            "SMCI": ("Super Micro",    "Builds servers using Nvidia GPUs — moves with NVDA"),
+            "DELL": ("Dell",           "Major AI server vendor — moves with AI infrastructure news"),
+        },
+        "color": "#4527A0",
+        "bg":    "#EDE7F6",
+        "source": "news",
+    },
 
-    # ── Real Estate & Infrastructure ─────────────────────────
-    "real estate": ("VNQ",   "Vanguard Real Estate ETF","Interest rates + zoning. Trump real estate background = sector mentions.", "positive"),
-    "infrastructure":("CAT", "Caterpillar",          "Infrastructure spending = CAT, heavy equipment, construction stocks.", "positive"),
-    "caterpillar": ("CAT",   "Caterpillar",          "Trump loves big infrastructure. CAT is the pick-and-shovel play.", "positive"),
-    "steel":       ("X",     "US Steel",             "Trump protects US steel with tariffs. Any steel mention = X, NUE move.", "positive"),
-    "us steel":    ("X",     "US Steel",             "Trump personally involved in US Steel/Nippon Steel deal.", "positive"),
+    "dimon": {
+        "name":    "Jamie Dimon",
+        "tier":    2,
+        "emoji":   "🏦",
+        "role":    "CEO JPMorgan Chase · Wall Street's most powerful banker",
+        "why":     "Head of the world's most systemically important bank. His warnings about recessions, credit crises, and market bubbles carry enormous weight. In May 2026 warned about an overdue credit recession. When Dimon talks, markets listen — he usually knows something.",
+        "keywords": ["jamie dimon", "dimon", "jpmorgan", "jp morgan", "chase bank", "credit recession", "banking crisis", "wall street warning", "financial crisis"],
+        "primary_stocks": {
+            "JPM":  ("JPMorgan Chase", "His own bank — always moves most on his statements"),
+            "BAC":  ("Bank of America","All big banks move together on credit/economy warnings"),
+            "GS":   ("Goldman Sachs",  "Investment banking — moves with financial sector warnings"),
+            "XLF":  ("Financial ETF",  "The whole financial sector moves on Dimon's economic calls"),
+        },
+        "color": "#004D40",
+        "bg":    "#E0F2F1",
+        "source": "news",
+    },
 
-    # ── AI & Semiconductors ───────────────────────────────────
-    "artificial intelligence":("NVDA","Nvidia",      "AI = Nvidia chips. Trump AI policy, export controls = NVDA move.", "positive"),
-    "ai":          ("NVDA",  "Nvidia + AI Sector",   "AI sector umbrella. Trump AI executive orders move entire AI sector.", "positive"),
-    "semiconductor":("NVDA", "Nvidia + Semis",       "Chip Act, export controls, TSMC. Trump semiconductor policy = sector move.", "neutral"),
-    "chip":        ("NVDA",  "Nvidia + AMD",         "Chip bans, tariffs, TSMC. Trump chip policy is enormously market-moving.", "neutral"),
-    "taiwan":      ("TSM",   "TSMC",                 "Taiwan = TSMC. China-Taiwan tensions = chip stocks move violently.", "negative"),
+    "altman": {
+        "name":    "Sam Altman",
+        "tier":    2,
+        "emoji":   "🧠",
+        "role":    "CEO OpenAI · Father of ChatGPT",
+        "why":     "Controls the world's most influential AI company. Microsoft owns ~49% of OpenAI. Every OpenAI product launch, funding round, or regulation statement moves MSFT, NVDA, and the entire AI sector. In 2026, his Musk trial testimony is market-moving. AI regulation = his word matters.",
+        "keywords": ["sam altman", "altman", "openai", "chatgpt", "gpt-5", "gpt5", "o3", "o4", "ai regulation", "openai funding", "artificial general intelligence", "agi"],
+        "primary_stocks": {
+            "MSFT": ("Microsoft",      "Owns ~49% of OpenAI — direct beneficiary of OpenAI success"),
+            "NVDA": ("Nvidia",         "OpenAI runs on Nvidia chips — NVDA moves on OpenAI news"),
+            "GOOGL":("Alphabet",       "OpenAI's biggest competitor — competitive threat signals"),
+            "PLTR": ("Palantir",       "AI for enterprise — sector moves with OpenAI milestones"),
+        },
+        "color": "#00695C",
+        "bg":    "#E0F7FA",
+        "source": "news",
+    },
 
-    # ── Canada/Trade specific (relevant to your TFSA) ─────────
-    "canada":      ("ENB",   "Enbridge + Canadian Stocks","Trump-Canada trade = direct TFSA impact. Tariffs, pipelines, energy.", "negative"),
-    "pipeline":    ("ENB",   "Enbridge",             "Trump loves pipelines. Keystone XL, Line 5. ENB benefits directly.", "positive"),
-    "shopify":     ("SHOP",  "Shopify",              "Canadian e-commerce. US tariffs affect Shopify merchants directly.", "negative"),
+    "bessent": {
+        "name":    "Scott Bessent",
+        "tier":    2,
+        "emoji":   "💰",
+        "role":    "US Treasury Secretary",
+        "why":     "Controls tariff negotiations, dollar policy, and US debt management. The person who actually implements Trump's trade war. His statements on China tariffs, trade deals, and the dollar directly affect global markets. He can pause or escalate tariffs unilaterally.",
+        "keywords": ["scott bessent", "bessent", "treasury secretary", "treasury department", "tariff negotiation", "trade deal", "us dollar", "debt ceiling", "treasury bonds"],
+        "primary_stocks": {
+            "SPY":  ("S&P 500",        "Tariff pauses or escalations = broad market move"),
+            "WMT":  ("Walmart",        "Tariffs hit retail supply chains — Bessent news moves retail"),
+            "AAPL": ("Apple",          "China tariff deals directly impact Apple supply chain"),
+            "UUP":  ("US Dollar ETF",  "Treasury policy = dollar strength or weakness"),
+        },
+        "color": "#4A148C",
+        "bg":    "#F3E5F5",
+        "source": "news",
+    },
 
-    # ── Specific Market Signals ───────────────────────────────
-    "stock market":("SPY",   "S&P 500 (SPY)",        "Trump commenting on the stock market = broad market move. Watch SPY.", "positive"),
-    "dow jones":   ("DIA",   "Dow Jones ETF",        "Dow mention from Trump = market-wide signal.", "positive"),
-    "recession":   ("GLD",   "Gold + Safe Havens",   "Recession talk = gold up, stocks down. Defensive positioning.", "negative"),
-    "inflation":   ("GLD",   "Gold",                 "Inflation = gold up, tech/growth stocks down.", "negative"),
-    "rate cut":    ("JPM",   "Banks + Growth Stocks","Rate cut = bank stocks up, tech stocks up, gold up.", "positive"),
-    "deal":        ("SPY",   "Broad Market",         "Trump loves deals. Trade deal = market-wide pump.", "positive"),
-    "great deal":  ("SPY",   "Broad Market",         "'Great deal' from Trump = expect a market rally.", "positive"),
-    "sanction":    ("XOM",   "Energy + Defence",     "Sanctions on oil producers = energy prices up, defence up.", "positive"),
-    "ban":         ("NVDA",  "Tech + Target Company","Banning a product/company = that stock drops immediately.", "negative"),
+    "zuckerberg": {
+        "name":    "Mark Zuckerberg",
+        "tier":    2,
+        "emoji":   "📱",
+        "role":    "CEO Meta Platforms · Facebook/Instagram/WhatsApp",
+        "why":     "Controls the world's largest social network. Meta's ad revenue is a direct barometer of the entire economy. Zuckerberg's AI push (Llama) is his bid to rival OpenAI. Any antitrust ruling, ad regulation, or AI product launch moves META significantly.",
+        "keywords": ["mark zuckerberg", "zuckerberg", "meta", "facebook", "instagram", "whatsapp", "llama", "threads", "metaverse", "ray-ban meta", "antitrust meta"],
+        "primary_stocks": {
+            "META": ("Meta Platforms", "His company — every statement moves META directly"),
+            "SNAP": ("Snapchat",       "Direct Meta competitor — moves inversely to Meta news"),
+            "GOOGL":("Alphabet",       "Ad revenue competitor — Meta vs Google ad news matters"),
+        },
+        "color": "#1565C0",
+        "bg":    "#E3F2FD",
+        "source": "news",
+    },
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # TIER 3 — MOVE THEIR INDUSTRY OR SPECIFIC COMPANIES
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    "cook": {
+        "name":    "Tim Cook",
+        "tier":    3,
+        "emoji":   "🍎",
+        "role":    "CEO Apple Inc.",
+        "why":     "Apple is the world's most valuable company. Cook's China relationship, supply chain commentary, and product announcements move AAPL 3-8%. Apple Intelligence (AI) launch = AAPL re-rating story for 2026.",
+        "keywords": ["tim cook", "tim apple", "apple ceo", "apple earnings", "apple china", "iphone sales", "apple intelligence", "apple vision"],
+        "primary_stocks": {
+            "AAPL": ("Apple",          "His company — Cook statements are the #1 AAPL catalyst"),
+            "QCOM": ("Qualcomm",       "Makes chips for iPhone — AAPL supply chain moves QCOM"),
+            "TSM":  ("TSMC",           "Makes all Apple chips — AAPL demand = TSM revenue"),
+        },
+        "color": "#212121",
+        "bg":    "#F5F5F5",
+        "source": "news",
+    },
+
+    "nadella": {
+        "name":    "Satya Nadella",
+        "tier":    3,
+        "emoji":   "☁️",
+        "role":    "CEO Microsoft · Azure Cloud · Copilot AI",
+        "why":     "Microsoft is the world's second most valuable company. Azure cloud + OpenAI partnership = AI plays through MSFT. Copilot is being embedded into every Office product used by 1.4 billion people. His AI guidance moves MSFT 3-6%.",
+        "keywords": ["satya nadella", "nadella", "microsoft ceo", "azure", "copilot", "office ai", "teams", "activision", "bing ai"],
+        "primary_stocks": {
+            "MSFT": ("Microsoft",      "His company — Nadella statements move MSFT directly"),
+            "NVDA": ("Nvidia",         "Azure runs on Nvidia chips — MSFT cloud growth = NVDA growth"),
+        },
+        "color": "#01579B",
+        "bg":    "#E1F5FE",
+        "source": "news",
+    },
+
+    "jassy": {
+        "name":    "Andy Jassy",
+        "tier":    3,
+        "emoji":   "📦",
+        "role":    "CEO Amazon · AWS Cloud",
+        "why":     "AWS is the world's largest cloud provider (31% market share). Amazon's retail + logistics business is the world's largest. Jassy's commentary on AI spending, AWS growth, and consumer demand is a bellwether for the entire tech and retail sector.",
+        "keywords": ["andy jassy", "jassy", "amazon ceo", "aws", "amazon web services", "amazon prime", "amazon earnings", "fulfillment"],
+        "primary_stocks": {
+            "AMZN": ("Amazon",         "His company — Jassy statements move AMZN directly"),
+            "MSFT": ("Microsoft",      "Azure competitor — AWS growth commentary moves MSFT inversely"),
+        },
+        "color": "#E65100",
+        "bg":    "#FFF3E0",
+        "source": "news",
+    },
+
+    "ellison": {
+        "name":    "Larry Ellison",
+        "tier":    3,
+        "emoji":   "🗄️",
+        "role":    "CTO & Co-founder Oracle",
+        "why":     "Oracle has become the surprise winner of the AI infrastructure boom. Major cloud contracts with OpenAI, xAI, and the US government. ORCL up 80%+ as AI companies race to store data. Ellison's announcements of new AI data centre deals have moved ORCL 10-20%.",
+        "keywords": ["larry ellison", "ellison", "oracle", "orcl", "oracle cloud", "oracle ai", "ellison foundation", "oracle health"],
+        "primary_stocks": {
+            "ORCL": ("Oracle",         "His company — Ellison deal announcements move ORCL 10-20%"),
+            "MSFT": ("Microsoft",      "Oracle-Microsoft partnership on AI infrastructure"),
+        },
+        "color": "#B71C1C",
+        "bg":    "#FFEBEE",
+        "source": "news",
+    },
+
+    "rfk": {
+        "name":    "Robert F Kennedy Jr (RFK)",
+        "tier":    3,
+        "emoji":   "💊",
+        "role":    "HHS Secretary · Vaccine Skeptic",
+        "why":     "Controls the FDA, CDC, and NIH. His anti-vaccine stance has directly impacted pharma stocks. Any FDA approval slowing, vaccine mandate rollback, or drug pricing policy change comes through RFK. Moderna lost 40% after he was confirmed. He is the most dangerous person to pharma stocks.",
+        "keywords": ["rfk", "rfk jr", "robert kennedy", "kennedy hhs", "fda approval", "vaccine mandate", "hhs secretary", "cdc policy", "drug approval", "make america healthy"],
+        "primary_stocks": {
+            "MRNA": ("Moderna",        "RFK is the biggest threat to vaccine revenue — MRNA drops on his statements"),
+            "PFE":  ("Pfizer",         "Vaccine + drug revenue at risk from RFK regulatory stance"),
+            "LLY":  ("Eli Lilly",      "FDA drug approval pace directly affected by RFK at HHS"),
+            "UNH":  ("UnitedHealth",   "Healthcare policy overhaul = UNH moves on RFK statements"),
+        },
+        "color": "#880E4F",
+        "bg":    "#FCE4EC",
+        "source": "news",
+    },
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # TIER 4 — MACRO, GEOPOLITICAL, SENTIMENT LEADERS
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    "xi": {
+        "name":    "Xi Jinping",
+        "tier":    4,
+        "emoji":   "🐉",
+        "role":    "President of China · Communist Party General Secretary",
+        "why":     "Controls the world's second largest economy. China-US trade war, Taiwan tensions, chip export bans, and TikTok fate all flow through Xi. A single Taiwan military statement can drop global markets 5%. China stimulus announcements pump commodity and EV stocks.",
+        "keywords": ["xi jinping", "xi", "china president", "beijing", "taiwan strait", "china stimulus", "pboc", "china trade", "chinese economy", "trade war china"],
+        "primary_stocks": {
+            "NVDA": ("Nvidia",         "China chip export controls = $15B+ revenue impact on NVDA"),
+            "AAPL": ("Apple",          "Apple makes 90% of products in China — Xi policy = AAPL"),
+            "TSM":  ("TSMC",           "Taiwan = TSMC. Xi Taiwan threats move TSM violently"),
+            "LMT":  ("Lockheed Martin","US-China tensions = defence stocks immediately pump"),
+        },
+        "color": "#B71C1C",
+        "bg":    "#FFEBEE",
+        "source": "news",
+    },
+
+    "mbs": {
+        "name":    "MBS (Mohammed bin Salman)",
+        "tier":    4,
+        "emoji":   "🛢️",
+        "role":    "Saudi Crown Prince · OPEC de facto leader",
+        "why":     "Controls Saudi Aramco and OPEC+ oil production decisions. One OPEC+ production cut can push oil up 5-10% overnight. With the Iran war in 2026, oil market is already volatile — MBS statements are critically market-moving for energy stocks and the entire inflation outlook.",
+        "keywords": ["mbs", "mohammed bin salman", "saudi arabia", "opec", "aramco", "oil production", "oil cut", "opec plus", "saudi vision 2030", "crude oil decision"],
+        "primary_stocks": {
+            "XOM":  ("ExxonMobil",     "Oil production decisions directly set XOM revenue"),
+            "CVX":  ("Chevron",        "Same as Exxon — OPEC output moves all major oil stocks"),
+            "LNG":  ("Cheniere Energy","Oil prices affect natural gas and LNG markets together"),
+            "GLD":  ("Gold",           "Oil price inflation = gold up as inflation hedge"),
+        },
+        "color": "#33691E",
+        "bg":    "#F1F8E9",
+        "source": "news",
+    },
+
+    "cathie": {
+        "name":    "Cathie Wood",
+        "tier":    4,
+        "emoji":   "📈",
+        "role":    "CEO ARK Invest · Innovation investor",
+        "why":     "ARK ETFs hold billions in disruptive tech. When ARK buys or sells, it signals conviction on future tech. Her price targets (Tesla $2000, Bitcoin $1.5M) move retail investor sentiment massively. ARK buy/sell filings are watched daily by millions of retail investors.",
+        "keywords": ["cathie wood", "cathie", "ark invest", "ark etf", "arkk", "ark buy", "ark sell", "innovation etf", "disruptive technology"],
+        "primary_stocks": {
+            "TSLA": ("Tesla",          "ARK's biggest holding — Cathie buy/sell moves TSLA"),
+            "COIN": ("Coinbase",       "Major ARK holding — ARK crypto conviction moves COIN"),
+            "RBLX": ("Roblox",         "ARK gaming/metaverse play — held in ARKK"),
+            "ROKU": ("Roku",           "Streaming tech — major ARK holding"),
+        },
+        "color": "#0277BD",
+        "bg":    "#E1F5FE",
+        "source": "news",
+    },
+
+    "burry": {
+        "name":    "Michael Burry",
+        "tier":    4,
+        "emoji":   "🐻",
+        "role":    "Scion Asset Management · 'The Big Short' investor",
+        "why":     "Famous for predicting and profiting from the 2008 housing crash. When Burry tweets or files a 13F showing massive short positions, markets pay attention. He predicted the 2022 crash, and his current warnings about US debt are being watched carefully in 2026.",
+        "keywords": ["michael burry", "burry", "scion", "big short", "burry short", "market crash warning", "13f burry", "put options burry"],
+        "primary_stocks": {
+            "SPY":  ("S&P 500",        "His broad market shorts affect sentiment across all stocks"),
+            "GLD":  ("Gold",           "Burry holds gold as inflation/crash hedge — moves on his buys"),
+            "GME":  ("GameStop",       "Burry famously made GME famous — retail follows his GME moves"),
+        },
+        "color": "#37474F",
+        "bg":    "#ECEFF1",
+        "source": "news",
+    },
 }
 
-# ── Keywords that indicate market relevance (secondary filter)
-MARKET_KEYWORDS = {
-    # Direct financial
-    "stock", "stocks", "market", "wall street", "nasdaq", "nyse",
-    "invest", "trillion", "billion", "million", "economy", "gdp",
-    "tariff", "tariffs", "trade", "sanction", "ban", "deal", "agreement",
-    # Sectors
-    "oil", "energy", "tech", "technology", "crypto", "bitcoin",
-    "defence", "defense", "pharma", "drug", "chip", "semiconductor",
-    "ai", "artificial intelligence", "bank", "finance", "steel",
-    "coal", "solar", "nuclear", "pipeline", "ev", "electric",
-    # Actions
-    "buy", "sell", "build", "manufacture", "produce", "export", "import",
-    "tax", "subsidy", "regulate", "approve", "reject", "announce",
-    # People/places with market impact
-    "china", "russia", "iran", "taiwan", "opec", "fed", "powell",
-    "elon", "musk", "bezos", "gates", "buffett", "dimon",
+
+# ══════════════════════════════════════════════════════════════
+# COMPANY → TICKER SIGNAL MAP
+# When any of these words appear in a statement, the listed
+# stocks are flagged. This works across ALL 20 people.
+# ══════════════════════════════════════════════════════════════
+
+TICKER_SIGNALS = {
+    # Direction: "up", "down", "watch"
+    "tariff":         [("SPY","down"),("WMT","down"),("AAPL","down"),("XOM","up")],
+    "tariffs":        [("SPY","down"),("WMT","down"),("AAPL","down"),("XOM","up")],
+    "trade deal":     [("SPY","up"),("AAPL","up"),("NVDA","up"),("WMT","up")],
+    "rate cut":       [("SPY","up"),("TLT","up"),("JPM","up"),("GLD","watch")],
+    "rate hike":      [("SPY","down"),("TLT","down"),("GLD","up"),("USD","up")],
+    "interest rate":  [("SPY","watch"),("JPM","watch"),("TLT","watch")],
+    "bitcoin":        [("COIN","up"),("MSTR","up"),("MARA","up"),("RIOT","up")],
+    "crypto":         [("COIN","up"),("HOOD","up"),("MSTR","up")],
+    "oil":            [("XOM","up"),("CVX","up"),("COP","up"),("LNG","up")],
+    "drill":          [("XOM","up"),("CVX","up"),("COP","up")],
+    "opec":           [("XOM","watch"),("CVX","watch"),("USO","watch")],
+    "china":          [("NVDA","down"),("AAPL","down"),("TSM","down"),("LMT","up")],
+    "taiwan":         [("TSM","down"),("NVDA","down"),("LMT","up"),("RTX","up")],
+    "nvidia":         [("NVDA","watch"),("AMD","watch"),("SMCI","watch")],
+    "ai":             [("NVDA","up"),("MSFT","up"),("GOOGL","up"),("PLTR","up")],
+    "artificial intelligence": [("NVDA","up"),("MSFT","up"),("META","up")],
+    "spacex":         [("RKLB","watch"),("BA","watch"),("LMT","watch")],
+    "tesla":          [("TSLA","watch")],
+    "apple":          [("AAPL","watch"),("QCOM","watch"),("TSM","watch")],
+    "amazon":         [("AMZN","watch"),("MSFT","watch")],
+    "microsoft":      [("MSFT","watch"),("NVDA","watch")],
+    "google":         [("GOOGL","watch"),("META","watch")],
+    "meta":           [("META","watch"),("SNAP","watch")],
+    "openai":         [("MSFT","up"),("NVDA","up"),("GOOGL","down")],
+    "vaccine":        [("MRNA","down"),("PFE","down"),("BNTX","down")],
+    "drug":           [("LLY","watch"),("PFE","watch"),("MRK","watch")],
+    "pharma":         [("LLY","watch"),("PFE","watch"),("ABBV","watch")],
+    "defence":        [("LMT","up"),("RTX","up"),("NOC","up"),("GD","up")],
+    "defense":        [("LMT","up"),("RTX","up"),("NOC","up"),("GD","up")],
+    "military":       [("LMT","up"),("RTX","up"),("NOC","up")],
+    "nuclear":        [("CEG","up"),("VST","up"),("CCJ","up")],
+    "solar":          [("FSLR","up"),("ENPH","up"),("NEE","up")],
+    "energy":         [("XOM","watch"),("CVX","watch"),("NEE","watch")],
+    "recession":      [("GLD","up"),("TLT","up"),("SPY","down")],
+    "inflation":      [("GLD","up"),("TLT","down"),("SPY","down")],
+    "deal":           [("SPY","up"),("DJT","watch")],
+    "sanction":       [("XOM","up"),("LMT","up"),("RTX","up")],
+    "ban":            [("NVDA","watch"),("SPY","watch")],
+    "steel":          [("X","up"),("NUE","up")],
+    "gold":           [("GLD","up"),("NEM","up")],
+    "bank":           [("JPM","watch"),("BAC","watch"),("GS","watch")],
+    "shopify":        [("SHOP","watch")],
+    "canada":         [("ENB","watch"),("SU","watch"),("SHOP","watch")],
 }
 
-# Ticker pattern — catches $AAPL, $TSLA etc. in posts
 TICKER_PATTERN = re.compile(r'\$([A-Z]{1,5})\b')
-
-# ── KNOWN TICKERS SET (for fast lookup from ticker pattern)
-KNOWN_TICKERS = {
-    "AAPL","MSFT","GOOGL","GOOG","META","AMZN","TSLA","NVDA","NFLX",
-    "COIN","MSTR","DJT","FOX","FOXA","WBD","DIS","CMCSA","JPM","GS",
-    "BAC","WFC","BLK","XOM","CVX","COP","LNG","FSLR","NEE","CEG",
-    "LMT","RTX","NOC","GD","BA","KTOS","F","GM","RIVN","LCID",
-    "LLY","PFE","MRK","MRNA","ABBV","JNJ","UNH","CAT","X","NUE",
-    "WMT","TGT","COST","NKE","SBUX","SPY","GLD","DIA","VNQ",
-    "SHOP","ENB","RY","TD","SU","ARCH","RKLB","AMD","INTC","TSM",
-    "MARA","RIOT","HOOD","SOFI","PYPL","SQ","V","MA","AXP","SCHW",
-}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -270,648 +521,718 @@ def load_seen():
 
 def save_seen(seen_set):
     try:
-        entries = list(seen_set)[-3000:]
         with open(SEEN_FILE, "w") as f:
-            json.dump(entries, f)
+            json.dump(list(seen_set)[-4000:], f)
     except Exception:
         pass
 
 
-def post_hash(post_id, source):
-    return hashlib.md5(f"{source}:{post_id}".encode()).hexdigest()
+def item_hash(content, source):
+    return hashlib.md5(f"{source}:{content[:120]}".encode()).hexdigest()
 
 
 # ══════════════════════════════════════════════════════════════
-# SOURCE 1 — CNN Truth Social Archive
-# Updated every 5 minutes. Public JSON. No auth needed.
-# This is the fastest available source.
+# DATA SOURCES
 # ══════════════════════════════════════════════════════════════
 
-def fetch_cnn_truth_archive(hours_back=1):
-    """
-    Fetches Trump's Truth Social posts from CNN's live archive.
-    URL: https://ix.cnn.io/data/truth-social/truth_archive.json
-    Updated every 5 minutes by CNN's scraper.
-    Returns list of post dicts.
-    """
+def fetch_trump_truth_social():
+    """CNN's live Trump Truth Social archive — updated every 5 min."""
     posts = []
     try:
-        url = "https://ix.cnn.io/data/truth-social/truth_archive.json"
-        r   = requests.get(url, headers=HEADERS, timeout=25)
+        r = requests.get(
+            "https://ix.cnn.io/data/truth-social/truth_archive.json",
+            headers=HEADERS, timeout=25
+        )
         if r.status_code != 200:
-            print(f"  CNN archive HTTP {r.status_code}")
             return []
 
-        data    = r.json()
-        cutoff  = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+        data   = r.json()
+        items  = data if isinstance(data, list) else data.get("posts", [])
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
 
-        # Data is a list sorted newest first
-        all_posts = data if isinstance(data, list) else data.get("posts", data.get("items", []))
-
-        for item in all_posts[:200]:  # only check recent 200
+        for item in items[:150]:
             try:
-                post_id    = str(item.get("id", ""))
-                content    = item.get("content", item.get("text", ""))
-                created_at = item.get("created_at", item.get("date", ""))
-
-                # Strip HTML tags from content
-                content = re.sub(r'<[^>]+>', ' ', content)
+                content = re.sub(r'<[^>]+>', ' ', item.get("content", item.get("text", "")))
                 content = re.sub(r'\s+', ' ', content).strip()
-
-                if not content or len(content) < 10:
+                if not content or len(content) < 15:
                     continue
-
-                # Parse date
+                ts = item.get("created_at", "")
                 try:
-                    post_time = datetime.fromisoformat(
-                        created_at.replace("Z", "+00:00")
-                    )
+                    t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                 except Exception:
-                    post_time = datetime.now(timezone.utc) - timedelta(hours=2)
-
-                if post_time < cutoff:
-                    break  # sorted newest first, stop when we go past cutoff
-
+                    t = datetime.now(timezone.utc) - timedelta(minutes=30)
+                if t < cutoff:
+                    break
                 posts.append({
-                    "id":       post_id,
-                    "content":  content,
-                    "time":     post_time,
-                    "url":      item.get("url", f"https://truthsocial.com/@realDonaldTrump/{post_id}"),
-                    "source":   "Truth Social (CNN Archive)",
-                    "reposts":  item.get("reblogs_count", 0),
-                    "likes":    item.get("favourites_count", 0),
+                    "person_key": "trump",
+                    "content":    content,
+                    "time":       t,
+                    "url":        item.get("url", "https://truthsocial.com/@realDonaldTrump"),
+                    "source":     "Truth Social",
+                    "likes":      item.get("favourites_count", 0),
+                    "reposts":    item.get("reblogs_count", 0),
                 })
-
             except Exception:
                 pass
 
-        print(f"  CNN Truth Archive: {len(posts)} posts in last {hours_back}h")
-
+        print(f"  Truth Social (CNN): {len(posts)} new posts")
     except Exception as e:
-        print(f"  CNN Truth Archive error: {e}")
-
+        print(f"  Truth Social error: {e}")
     return posts
 
-
-# ══════════════════════════════════════════════════════════════
-# SOURCE 2 — trumpstruth.org RSS Feed (Backup)
-# Independent archive with RSS. Used as fallback if CNN is slow.
-# ══════════════════════════════════════════════════════════════
 
 def fetch_trumpstruth_rss():
-    """
-    Fetches from trumpstruth.org RSS feed.
-    Returns list of post dicts.
-    """
+    """Backup Trump source: trumpstruth.org RSS."""
     posts = []
     try:
-        today  = datetime.now().strftime("%Y-%m-%d")
-        yest   = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        url    = f"https://www.trumpstruth.org/feed?start_date={yest}&end_date={today}"
-
-        r = requests.get(url, headers=HEADERS, timeout=20)
+        today = datetime.now().strftime("%Y-%m-%d")
+        yest  = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        r = requests.get(
+            f"https://www.trumpstruth.org/feed?start_date={yest}&end_date={today}",
+            headers=HEADERS, timeout=20
+        )
         if r.status_code != 200:
-            print(f"  trumpstruth.org HTTP {r.status_code}")
             return []
-
-        root  = ET.fromstring(r.content)
-        items = root.findall(".//item")
+        root   = ET.fromstring(r.content)
         cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
-
-        for item in items[:50]:
+        for item in root.findall(".//item")[:30]:
             try:
-                post_id  = item.findtext("guid") or item.findtext("link") or ""
-                title    = item.findtext("title") or ""
-                desc     = item.findtext("description") or ""
-                pub_date = item.findtext("pubDate") or ""
-                link     = item.findtext("link") or ""
-
-                content = re.sub(r'<[^>]+>', ' ', desc or title)
+                content = re.sub(r'<[^>]+>', ' ', item.findtext("description") or item.findtext("title") or "")
                 content = re.sub(r'\s+', ' ', content).strip()
-
                 if not content:
                     continue
-
-                # Parse RFC 2822 date
+                from email.utils import parsedate_to_datetime
                 try:
-                    from email.utils import parsedate_to_datetime
-                    post_time = parsedate_to_datetime(pub_date)
-                    if post_time.tzinfo is None:
-                        post_time = post_time.replace(tzinfo=timezone.utc)
+                    t = parsedate_to_datetime(item.findtext("pubDate") or "")
+                    if t.tzinfo is None:
+                        t = t.replace(tzinfo=timezone.utc)
                 except Exception:
-                    post_time = datetime.now(timezone.utc) - timedelta(hours=1)
-
-                if post_time < cutoff:
+                    t = datetime.now(timezone.utc) - timedelta(hours=1)
+                if t < cutoff:
                     continue
-
                 posts.append({
-                    "id":      post_id or content[:50],
-                    "content": content,
-                    "time":    post_time,
-                    "url":     link,
-                    "source":  "Truth Social (trumpstruth.org)",
-                    "reposts": 0,
-                    "likes":   0,
+                    "person_key": "trump",
+                    "content":    content,
+                    "time":       t,
+                    "url":        item.findtext("link") or "https://trumpstruth.org",
+                    "source":     "Truth Social (trumpstruth.org)",
+                    "likes":      0,
+                    "reposts":    0,
                 })
-
             except Exception:
                 pass
-
         print(f"  trumpstruth.org: {len(posts)} posts")
-
     except Exception as e:
         print(f"  trumpstruth.org error: {e}")
-
     return posts
 
 
-# ══════════════════════════════════════════════════════════════
-# SOURCE 3 — Google News RSS (Trump + market news)
-# Free, no key, works from any server.
-# Catches mainstream media reporting on Trump stock-moving news.
-# ══════════════════════════════════════════════════════════════
-
-def fetch_google_news():
-    """
-    Fetches Google News RSS for Trump-related market/stock news.
-    Multiple queries to cover different angles.
-    Returns list of article dicts.
-    """
+def fetch_google_news_for_person(person_key, person_data):
+    """Fetch Google News RSS for a specific market mover."""
     articles = []
-    queries  = [
-        "Trump stock market",
-        "Trump tariff stocks",
-        "Trump trade deal market",
-        "Trump mentions company stock",
-        "Trump Truth Social market reaction",
-    ]
+    name     = person_data["name"]
+    keywords = person_data["keywords"]
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=3)
+    # Use first 2 keywords as search queries
+    queries = [name, keywords[0]] if len(keywords) > 1 else [name]
 
-    for query in queries:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=4)
+
+    for query in queries[:2]:
         try:
-            encoded = requests.utils.quote(query)
+            encoded = requests.utils.quote(f"{query} stock market")
             url     = f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
             r       = requests.get(url, headers=HEADERS, timeout=15)
             if r.status_code != 200:
                 continue
 
-            root  = ET.fromstring(r.content)
-            items = root.findall(".//item")
-
-            for item in items[:10]:
+            root = ET.fromstring(r.content)
+            for item in root.findall(".//item")[:5]:
                 try:
                     title   = item.findtext("title") or ""
-                    desc    = item.findtext("description") or ""
+                    desc    = re.sub(r'<[^>]+>', '', item.findtext("description") or "")
                     link    = item.findtext("link") or ""
                     pub     = item.findtext("pubDate") or ""
-                    source  = item.findtext("source") or "Google News"
+                    src     = item.findtext("source") or "Google News"
 
-                    content = f"{title}. {re.sub(r'<[^>]+>', '', desc)}".strip()
+                    content = f"{title}. {desc}".strip()
 
-                    if not content or "trump" not in content.lower():
+                    # Must actually mention the person
+                    name_lower = name.lower()
+                    if not any(kw in content.lower() for kw in keywords[:3]):
                         continue
 
+                    from email.utils import parsedate_to_datetime
                     try:
-                        from email.utils import parsedate_to_datetime
-                        art_time = parsedate_to_datetime(pub)
-                        if art_time.tzinfo is None:
-                            art_time = art_time.replace(tzinfo=timezone.utc)
+                        t = parsedate_to_datetime(pub)
+                        if t.tzinfo is None:
+                            t = t.replace(tzinfo=timezone.utc)
                     except Exception:
-                        art_time = datetime.now(timezone.utc) - timedelta(hours=1)
+                        t = datetime.now(timezone.utc) - timedelta(hours=2)
 
-                    if art_time < cutoff:
+                    if t < cutoff:
                         continue
 
                     articles.append({
-                        "id":      link or content[:60],
-                        "content": content,
-                        "time":    art_time,
-                        "url":     link,
-                        "source":  f"Google News ({source})",
-                        "reposts": 0,
-                        "likes":   0,
-                        "is_news": True,
+                        "person_key": person_key,
+                        "content":    content,
+                        "time":       t,
+                        "url":        link,
+                        "source":     f"Google News ({src})",
+                        "likes":      0,
+                        "reposts":    0,
                     })
-
                 except Exception:
                     pass
 
-            time.sleep(0.5)  # polite to Google
+            time.sleep(0.3)
+        except Exception:
+            pass
 
+    return articles
+
+
+def fetch_yahoo_finance_rss():
+    """Yahoo Finance RSS — broad market news with influential person mentions."""
+    articles = []
+    feeds = [
+        "https://finance.yahoo.com/rss/topstories",
+        "https://finance.yahoo.com/rss/headline?s=SPY",
+    ]
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=3)
+
+    for feed_url in feeds:
+        try:
+            r = requests.get(feed_url, headers=HEADERS, timeout=15)
+            if r.status_code != 200:
+                continue
+            root = ET.fromstring(r.content)
+            for item in root.findall(".//item")[:15]:
+                try:
+                    title   = item.findtext("title") or ""
+                    desc    = re.sub(r'<[^>]+>', '', item.findtext("description") or "")
+                    link    = item.findtext("link") or ""
+                    pub     = item.findtext("pubDate") or ""
+                    content = f"{title}. {desc}".strip()
+
+                    from email.utils import parsedate_to_datetime
+                    try:
+                        t = parsedate_to_datetime(pub)
+                        if t.tzinfo is None:
+                            t = t.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        t = datetime.now(timezone.utc) - timedelta(hours=1)
+
+                    if t < cutoff:
+                        continue
+
+                    # Identify which person this is about
+                    person_key = None
+                    content_lower = content.lower()
+                    for pk, pd in MARKET_MOVERS.items():
+                        if any(kw in content_lower for kw in pd["keywords"][:3]):
+                            person_key = pk
+                            break
+
+                    if not person_key:
+                        continue
+
+                    articles.append({
+                        "person_key": person_key,
+                        "content":    content,
+                        "time":       t,
+                        "url":        link,
+                        "source":     "Yahoo Finance",
+                        "likes":      0,
+                        "reposts":    0,
+                    })
+                except Exception:
+                    pass
+            time.sleep(0.5)
         except Exception as e:
             pass
 
-    # Deduplicate articles by title
-    seen_titles = set()
-    unique = []
-    for a in articles:
-        key = a["content"][:80].lower()
-        if key not in seen_titles:
-            seen_titles.add(key)
-            unique.append(a)
-
-    print(f"  Google News: {len(unique)} relevant articles")
-    return unique
+    print(f"  Yahoo Finance: {len(articles)} relevant articles")
+    return articles
 
 
 # ══════════════════════════════════════════════════════════════
 # MARKET IMPACT ANALYSER
-#
-# Given a post/article, determines:
-#   1. Is this market-relevant at all?
-#   2. Which specific stocks/tickers does it affect?
-#   3. What is the likely direction (up/down/neutral)?
-#   4. How urgent is this — act NOW or monitor?
-#   5. Plain-English explanation of what to do
 # ══════════════════════════════════════════════════════════════
 
-def analyse_market_impact(post):
+def analyse(item):
     """
-    Analyses a Trump post for market-moving content.
-    Returns None if not market-relevant.
-    Returns a dict with full analysis if it is.
+    Given a news item with a person_key, determine market impact.
+    Returns enriched dict or None if not market-relevant.
     """
-    content_lower = post["content"].lower()
-    content_raw   = post["content"]
+    person    = MARKET_MOVERS.get(item["person_key"])
+    if not person:
+        return None
 
-    affected_stocks = {}  # ticker → {name, reason, sentiment, keyword}
+    content_lower = item["content"].lower()
+    content_raw   = item["content"]
 
-    # ── Step 1: Scan for company/keyword matches ──────────────
-    for keyword, (ticker, name, reason, sentiment) in COMPANY_MAP.items():
+    # ── Find affected stocks ──────────────────────────────────
+    affected = {}  # ticker → {direction, reason}
+
+    # 1. Explicit $TICKER mentions
+    for t in TICKER_PATTERN.findall(content_raw):
+        if len(t) <= 5:
+            affected[t] = {"direction": "watch", "reason": f"Explicitly mentioned ${t}"}
+
+    # 2. Keyword → ticker mapping
+    for keyword, ticker_list in TICKER_SIGNALS.items():
         if keyword in content_lower:
-            if ticker not in affected_stocks:
-                affected_stocks[ticker] = {
-                    "name":      name,
-                    "reason":    reason,
-                    "sentiment": sentiment,
-                    "keyword":   keyword,
-                }
+            for ticker, direction in ticker_list:
+                if ticker not in affected:
+                    affected[ticker] = {"direction": direction, "reason": f"Post mentions '{keyword}'"}
 
-    # ── Step 2: Scan for explicit $TICKER mentions ─────────────
-    ticker_matches = TICKER_PATTERN.findall(content_raw)
-    for t in ticker_matches:
-        if t in KNOWN_TICKERS and t not in affected_stocks:
-            affected_stocks[t] = {
-                "name":      t,
-                "reason":    f"Trump explicitly mentioned ${t} in this post.",
-                "sentiment": "positive",  # explicit mention usually positive
-                "keyword":   f"${t}",
-            }
+    # 3. Person's primary stocks always get flagged
+    for ticker, (name, reason) in person["primary_stocks"].items():
+        if ticker not in affected:
+            affected[ticker] = {"direction": "watch", "reason": reason}
 
-    # ── Step 3: If no specific stocks, check for market keywords
-    has_market_keyword = any(kw in content_lower for kw in MARKET_KEYWORDS)
+    if not affected:
+        return None
 
-    if not affected_stocks and not has_market_keyword:
-        return None  # purely political — not relevant
+    # ── Sentiment analysis ────────────────────────────────────
+    positive_words = ["great", "amazing", "deal", "approve", "build", "win", "growth",
+                      "boom", "record", "strong", "best", "love", "tremendous", "surge",
+                      "rally", "soar", "beat", "profit", "gain", "invest", "buy"]
+    negative_words = ["bad", "ban", "tariff", "attack", "crash", "war", "sanction",
+                      "recession", "inflation", "fraud", "fail", "drop", "concern",
+                      "risk", "threat", "loss", "miss", "cut", "layoff", "crisis"]
 
-    # If market keyword but no specific stock, flag as broad market
-    if not affected_stocks and has_market_keyword:
-        affected_stocks["SPY"] = {
-            "name":      "S&P 500 (Broad Market)",
-            "reason":    "This post contains market-relevant language that could affect the broader market.",
-            "sentiment": "neutral",
-            "keyword":   "market",
-        }
+    pos = sum(1 for w in positive_words if w in content_lower)
+    neg = sum(1 for w in negative_words if w in content_lower)
 
-    # ── Step 4: Determine overall sentiment ───────────────────
-    positive_words = ["great", "amazing", "beautiful", "winning", "best", "love",
-                      "deal", "approve", "build", "invest", "boom", "tremendous",
-                      "perfect", "fantastic", "congratulations", "thank", "strong"]
-    negative_words = ["bad", "terrible", "horrible", "failing", "fake", "witch hunt",
-                      "ban", "sanction", "tariff", "tax", "attack", "enemy", "fraud",
-                      "corrupt", "disaster", "worst", "threat", "illegal", "crooked"]
-
-    pos_count = sum(1 for w in positive_words if w in content_lower)
-    neg_count = sum(1 for w in negative_words if w in content_lower)
-
-    if pos_count > neg_count + 1:
-        overall_sentiment = "POSITIVE"
-        sentiment_color   = "#0A5D3E"
-        sentiment_bg      = "#D4F5E9"
-        sentiment_emoji   = "📈"
-    elif neg_count > pos_count + 1:
-        overall_sentiment = "NEGATIVE"
-        sentiment_color   = "#8a1a1a"
-        sentiment_bg      = "#FDECEA"
-        sentiment_emoji   = "📉"
+    if pos > neg + 1:
+        sentiment, s_emoji, s_color, s_bg = "BULLISH 📈", "📈", "#0A5D3E", "#D4F5E9"
+    elif neg > pos + 1:
+        sentiment, s_emoji, s_color, s_bg = "BEARISH 📉", "📉", "#8a1a1a", "#FDECEA"
     else:
-        overall_sentiment = "MIXED / WATCH"
-        sentiment_color   = "#7A4900"
-        sentiment_bg      = "#FEF3DC"
-        sentiment_emoji   = "👀"
+        sentiment, s_emoji, s_color, s_bg = "MIXED 👀",  "👀", "#7A4900", "#FEF3DC"
 
-    # ── Step 5: Urgency rating ────────────────────────────────
-    # Explicit tickers = maximum urgency
-    # CEO names / company names = high urgency
-    # Sector keywords only = medium urgency
-    if ticker_matches or any(k in ["elon", "musk", "bezos", "truth social", "tesla"] for k in content_lower.split()):
-        urgency = "🚨 ACT NOW"
-        urgency_note = "Trump directly named a company or person. These posts move stocks within MINUTES. Check the market immediately."
-    elif len(affected_stocks) >= 3:
-        urgency = "⚡ HIGH"
-        urgency_note = "Multiple stocks affected. Broad market-moving post. Check pre-market or market open."
-    elif any(v["sentiment"] in ("positive", "negative") for v in affected_stocks.values()):
-        urgency = "📊 MEDIUM"
-        urgency_note = "Clear directional signal on specific stocks. Monitor opening and consider entry."
+    # ── Urgency ───────────────────────────────────────────────
+    tier = person["tier"]
+    if tier == 1 and item["source"] == "Truth Social":
+        urgency, u_color, u_bg = "🚨 ACT WITHIN MINUTES", "#B71C1C", "#FFCDD2"
+    elif tier == 1:
+        urgency, u_color, u_bg = "⚡ ACT TODAY",          "#E65100", "#FFE0B2"
+    elif tier == 2:
+        urgency, u_color, u_bg = "📊 ACT THIS WEEK",      "#1565C0", "#BBDEFB"
     else:
-        urgency = "👀 LOW"
-        urgency_note = "General market language. Watch for follow-up posts before acting."
+        urgency, u_color, u_bg = "👀 MONITOR",            "#555555", "#F5F5F5"
 
-    # ── Step 6: Generate what-to-do ───────────────────────────
-    action_lines = []
-    for ticker, info in list(affected_stocks.items())[:5]:
-        sent = info["sentiment"]
-        if sent == "positive":
-            action_lines.append(f"${ticker} ({info['name']}) — Consider BUYING. Hold 1-3 days max for Trump-pump trades. Set stop loss at -5%.")
-        elif sent == "negative":
-            action_lines.append(f"${ticker} ({info['name']}) — Expect a DROP. Do not buy immediately. Wait 2-3 days for stability before considering entry.")
-        elif sent == "sector":
-            action_lines.append(f"${ticker} ({info['name']}) — SECTOR MOVE expected. Multiple stocks in this sector will react together.")
+    # ── What to do ────────────────────────────────────────────
+    actions = []
+    for ticker, info in list(affected.items())[:5]:
+        d = info["direction"]
+        if d == "up":
+            actions.append(f"<strong>${ticker}</strong> — Consider BUYING. Set -5% stop loss. Target +15-25% gain. Hold max 1-3 days for news-driven trades.")
+        elif d == "down":
+            actions.append(f"<strong>${ticker}</strong> — Expect a DROP. Do NOT buy immediately. Wait 2-3 days for stability. Then consider entry if fundamentals still good.")
         else:
-            action_lines.append(f"${ticker} ({info['name']}) — Watch closely. Direction depends on further context.")
+            actions.append(f"<strong>${ticker}</strong> — WATCH closely. Direction unclear. Wait for confirmation before entering a position.")
+
+    # ── Hold period based on person ───────────────────────────
+    hold_periods = {
+        "trump":        "1-3 days (Trump news fades fast)",
+        "musk":         "1-5 days (Musk pumps are short-lived)",
+        "warsh":        "1-4 weeks (Fed policy is slower-moving)",
+        "powell":       "1-2 weeks (Fed statement impact lingers)",
+        "buffett":      "3-12 months (Buffett moves = long-term signal)",
+        "jensen":       "1-4 weeks (Nvidia guidance = earnings cycle)",
+        "dimon":        "2-8 weeks (Economic warnings take time to play out)",
+        "altman":       "1-4 weeks (AI news moves quickly then stabilises)",
+        "bessent":      "1-7 days (Tariff news = immediate but short-lived)",
+        "zuckerberg":   "1-4 weeks (Ad revenue and AI moves at quarterly pace)",
+        "cook":         "1-4 weeks (Supply chain and product news = weeks)",
+        "nadella":      "1-4 weeks (Cloud growth = quarterly story)",
+        "jassy":        "1-4 weeks (AWS and retail = quarterly pace)",
+        "ellison":      "1-8 weeks (Deal announcements take time to validate)",
+        "rfk":          "2-12 weeks (Regulatory changes are slow)",
+        "xi":           "1-2 weeks (Geopolitical tension ebbs and flows)",
+        "mbs":          "1-7 days (Oil production decisions immediate)",
+        "cathie":       "1-4 weeks (ARK positioning = medium-term signal)",
+        "burry":        "1-6 months (Burry shorts play out over quarters)",
+    }
+    hold = hold_periods.get(item["person_key"], "1-2 weeks")
+
+    exit_signals = {
+        "trump":    "When Trump's next post changes the subject or market cools",
+        "musk":     "When Musk stops talking about it or TSLA reaches +20%",
+        "warsh":    "After the next FOMC meeting clarifies Fed direction",
+        "powell":   "After Warsh's first press conference as Chair",
+        "buffett":  "When Buffett files next 13F showing position change",
+        "jensen":   "After next Nvidia earnings call confirms or denies guidance",
+        "dimon":    "When next bank earnings show actual credit data",
+        "altman":   "When the AI news cycle moves to next product/regulation",
+        "bessent":  "When tariff deal is signed or falls apart",
+        "xi":       "When US-China tension indicator changes direction",
+        "mbs":      "After next OPEC+ meeting decision",
+        "rfk":      "When FDA ruling or policy change is officially announced",
+        "cathie":   "When ARK files next position update (weekly)",
+        "burry":    "When his 13F shows position closed or reduced",
+    }
+    exit_sig = exit_signals.get(item["person_key"], "When the news cycle moves on")
 
     return {
-        "post":             post,
-        "affected_stocks":  affected_stocks,
-        "overall_sentiment":overall_sentiment,
-        "sentiment_color":  sentiment_color,
-        "sentiment_bg":     sentiment_bg,
-        "sentiment_emoji":  sentiment_emoji,
-        "pos_count":        pos_count,
-        "neg_count":        neg_count,
-        "urgency":          urgency,
-        "urgency_note":     urgency_note,
-        "action_lines":     action_lines,
-        "ticker_count":     len(affected_stocks),
+        **item,
+        "person":    person,
+        "affected":  affected,
+        "sentiment": sentiment,
+        "s_emoji":   s_emoji,
+        "s_color":   s_color,
+        "s_bg":      s_bg,
+        "urgency":   urgency,
+        "u_color":   u_color,
+        "u_bg":      u_bg,
+        "actions":   actions,
+        "hold":      hold,
+        "exit":      exit_sig,
+        "pos":       pos,
+        "neg":       neg,
     }
 
 
 # ══════════════════════════════════════════════════════════════
-# EMAIL HTML BUILDER
-# Matches your Phase 1-5 visual style exactly.
+# EMAIL HTML — BEAUTIFUL, CLEAR, EASY TO READ
 # ══════════════════════════════════════════════════════════════
 
 CSS = """
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  background:#f4f4f4;margin:0;padding:20px;color:#222;}
-.wrap{max-width:680px;margin:0 auto;}
-.header{background:linear-gradient(135deg,#B71C1C,#D32F2F);color:#fff;
-  padding:26px 28px;border-radius:14px 14px 0 0;}
-.header h1{margin:0;font-size:21px;font-weight:700;}
-.header p{margin:6px 0 0;font-size:13px;opacity:.8;}
-.body{background:#fff;border:1px solid #e2e2e2;border-top:none;
-  border-radius:0 0 14px 14px;padding-bottom:24px;}
-.section{padding:20px 22px 0;}
-.section-head{font-size:12px;font-weight:700;color:#666;text-transform:uppercase;
-  letter-spacing:.7px;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:12px;}
-.post-card{border:1px solid #eaeaea;border-radius:10px;margin-bottom:16px;overflow:hidden;}
-.post-top{background:#fafafa;padding:14px 16px;border-bottom:1px solid #eee;}
-.post-content{font-size:15px;font-weight:500;line-height:1.6;
-  color:#1a1a1a;background:#fff8e1;padding:14px 16px;
-  border-left:4px solid #D32F2F;margin:0;font-style:italic;}
-.urgency-bar{padding:10px 16px;display:flex;align-items:center;gap:10px;
-  border-bottom:1px solid #f0f0f0;}
-.urgency-label{font-size:15px;font-weight:700;}
-.urgency-note{font-size:12px;color:#555;}
-.stock-grid{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px 4px;}
-.stock-chip{border-radius:8px;padding:8px 12px;border:1px solid #eee;min-width:130px;flex:1;}
-.chip-ticker{font-size:16px;font-weight:700;}
-.chip-name{font-size:11px;color:#888;margin-top:1px;}
-.chip-dir{font-size:12px;font-weight:600;margin-top:4px;}
-.info-box{margin:8px 16px 8px;padding:12px 14px;border-radius:8px;
-  font-size:13px;line-height:1.65;border-left:4px solid;}
-.action-box{margin:8px 16px 12px;padding:14px 16px;border-radius:8px;border-left:4px solid;}
-.action-title{font-size:14px;font-weight:700;margin-bottom:8px;}
-.action-row{font-size:13px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,.06);line-height:1.6;}
-.action-row:last-child{border:none;}
-.meta-row{display:flex;gap:16px;padding:8px 16px 10px;flex-wrap:wrap;}
-.meta-item{font-size:11px;color:#aaa;}
-.meta-item strong{color:#555;}
-.quicklist{margin:16px 22px 0;background:linear-gradient(135deg,#B71C1C,#D32F2F);
-  border-radius:10px;padding:16px 18px;color:#fff;}
-.quicklist h2{margin:0 0 4px;font-size:15px;font-weight:700;}
-.quicklist p{margin:0 0 12px;font-size:12px;opacity:.85;}
-.ql-row{display:flex;justify-content:space-between;align-items:center;
-  padding:8px 0;border-bottom:1px solid rgba(255,255,255,.2);}
+*{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  background:#F0F2F5;margin:0;padding:16px;color:#1a1a1a;}
+.wrap{max-width:700px;margin:0 auto;}
+
+/* ── HEADER ── */
+.header{background:linear-gradient(135deg,#0D1B4B 0%,#1a237e 50%,#283593 100%);
+  color:#fff;padding:28px 28px 22px;border-radius:16px 16px 0 0;
+  border-bottom:3px solid #3949ab;}
+.header-top{display:flex;justify-content:space-between;align-items:flex-start;}
+.header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px;}
+.header .sub{margin:4px 0 0;font-size:13px;opacity:.75;}
+.live-badge{background:#E53935;color:#fff;font-size:11px;font-weight:700;
+  padding:3px 10px;border-radius:20px;letter-spacing:.5px;}
+
+/* ── SUMMARY BAR ── */
+.summary-bar{background:#fff;border:1px solid #e0e0e0;border-top:none;
+  padding:16px 20px;display:flex;justify-content:space-around;flex-wrap:wrap;gap:8px;}
+.stat{text-align:center;min-width:80px;}
+.stat .num{font-size:26px;font-weight:800;line-height:1;}
+.stat .lbl{font-size:10px;color:#888;margin-top:3px;text-transform:uppercase;letter-spacing:.4px;}
+
+/* ── SECTION HEADERS ── */
+.section{padding:20px 20px 0;}
+.section-title{font-size:11px;font-weight:800;color:#666;text-transform:uppercase;
+  letter-spacing:1px;border-bottom:2px solid #eee;padding-bottom:8px;margin-bottom:14px;}
+
+/* ── PERSON CARD ── */
+.card{background:#fff;border:1px solid #e8e8e8;border-radius:14px;
+  margin-bottom:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+
+.card-header{padding:14px 18px;display:flex;align-items:center;gap:14px;}
+.person-emoji{font-size:32px;line-height:1;}
+.person-info{flex:1;}
+.person-name{font-size:18px;font-weight:800;line-height:1.2;}
+.person-role{font-size:12px;color:#777;margin-top:2px;}
+.tier-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;
+  border-radius:10px;margin-top:4px;text-transform:uppercase;letter-spacing:.4px;}
+.urgency-badge{font-size:13px;font-weight:700;padding:6px 14px;border-radius:20px;
+  white-space:nowrap;text-align:center;}
+
+/* ── QUOTE BOX ── */
+.quote-box{margin:0 18px;padding:14px 16px;border-radius:10px;
+  background:#FFFDE7;border-left:4px solid #F9A825;
+  font-size:14px;line-height:1.65;color:#333;font-style:italic;}
+.quote-meta{display:flex;gap:16px;padding:8px 18px;flex-wrap:wrap;}
+.q-meta{font-size:11px;color:#aaa;}
+.q-meta strong{color:#666;}
+
+/* ── WHY IT MATTERS ── */
+.why-box{margin:8px 18px;padding:12px 14px;background:#F8F9FF;border-radius:8px;
+  font-size:13px;line-height:1.6;color:#444;border:1px solid #e8eaf6;}
+.why-label{font-size:10px;font-weight:700;color:#5c6bc0;text-transform:uppercase;
+  letter-spacing:.5px;margin-bottom:4px;}
+
+/* ── STOCKS GRID ── */
+.stocks-label{font-size:10px;font-weight:700;color:#555;text-transform:uppercase;
+  letter-spacing:.5px;padding:10px 18px 6px;}
+.stocks-grid{display:flex;flex-wrap:wrap;gap:8px;padding:0 18px 10px;}
+.stock-chip{border-radius:10px;padding:10px 14px;border:1px solid #e0e0e0;
+  min-width:120px;flex:1;max-width:160px;}
+.chip-ticker{font-size:16px;font-weight:800;}
+.chip-name{font-size:10px;color:#999;margin:2px 0;}
+.chip-dir{font-size:11px;font-weight:700;margin-top:4px;}
+.dir-up{color:#0A5D3E;}
+.dir-down{color:#C62828;}
+.dir-watch{color:#F57F17;}
+
+/* ── ACTION BOX ── */
+.action-box{margin:8px 18px 12px;padding:14px 16px;border-radius:10px;border-left:4px solid;}
+.action-title{font-size:13px;font-weight:800;margin-bottom:10px;}
+.action-item{font-size:13px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.06);
+  line-height:1.6;color:#333;}
+.action-item:last-child{border:none;}
+.hold-row{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;}
+.hold-chip{background:rgba(255,255,255,.7);border:1px solid rgba(0,0,0,.1);
+  border-radius:8px;padding:8px 12px;flex:1;min-width:140px;}
+.hold-chip .hl{font-size:10px;color:#888;margin-bottom:2px;}
+.hold-chip .hv{font-size:12px;font-weight:600;color:#333;}
+
+/* ── QUICK LIST ── */
+.quick{background:linear-gradient(135deg,#0D1B4B,#1a237e);
+  border-radius:12px;padding:18px 20px;color:#fff;margin:16px 20px 0;}
+.quick h2{margin:0 0 4px;font-size:15px;font-weight:800;}
+.quick p{margin:0 0 14px;font-size:12px;opacity:.8;}
+.ql-row{display:flex;align-items:center;gap:12px;padding:9px 0;
+  border-bottom:1px solid rgba(255,255,255,.15);}
 .ql-row:last-child{border:none;padding-bottom:0;}
-.ql-content{font-size:13px;font-weight:600;flex:1;margin-right:10px;}
-.ql-badge{font-size:12px;background:rgba(255,255,255,.25);
+.ql-emoji{font-size:22px;flex-shrink:0;}
+.ql-text{flex:1;}
+.ql-person{font-size:13px;font-weight:700;}
+.ql-snippet{font-size:11px;opacity:.8;margin-top:1px;}
+.ql-badge{font-size:11px;background:rgba(255,255,255,.2);
   padding:3px 10px;border-radius:10px;font-weight:700;white-space:nowrap;}
-.footer{text-align:center;padding:18px 22px 0;font-size:11px;color:#bbb;line-height:1.7;}
-.divider{height:1px;background:#f0f0f0;margin:20px 22px 0;}
-.summary-stat{text-align:center;padding:4px 8px;}
-.summary-stat .num{font-size:22px;font-weight:700;}
-.summary-stat .desc{font-size:10px;color:#888;}
-.source-tag{font-size:10px;color:#bbb;padding:4px 16px 8px;}
+
+/* ── FOOTER ── */
+.footer-bar{background:#fff;border:1px solid #e0e0e0;border-top:none;
+  border-radius:0 0 16px 16px;padding:16px 20px;text-align:center;
+  font-size:11px;color:#aaa;line-height:1.8;}
+.divider{height:1px;background:#f0f0f0;margin:20px 20px 0;}
 </style>
 """
 
-SENTIMENT_ARROW = {"POSITIVE": "📈", "NEGATIVE": "📉", "MIXED / WATCH": "👀"}
+TIER_STYLES = {
+    1: ("🔴 Tier 1 · Moves entire market",    "#B71C1C", "#FFCDD2"),
+    2: ("🟠 Tier 2 · Moves sectors",          "#E65100", "#FFE0B2"),
+    3: ("🟡 Tier 3 · Moves specific stocks",   "#F57F17", "#FFF9C4"),
+    4: ("🔵 Tier 4 · Macro & sentiment",       "#1565C0", "#BBDEFB"),
+}
 
-def sentiment_chip_style(sentiment):
-    styles = {
-        "positive": ("background:#D4F5E9;border-color:#1D9E75;", "#0A5D3E", "📈 Likely UP"),
-        "negative": ("background:#FDECEA;border-color:#E24B4A;", "#8a1a1a", "📉 Likely DOWN"),
-        "sector":   ("background:#EEF4FF;border-color:#1a237e;", "#1a237e", "🔄 Sector Move"),
-        "neutral":  ("background:#F5F5F5;border-color:#ccc;",    "#555",    "👀 Watch"),
-    }
-    return styles.get(sentiment, styles["neutral"])
+DIR_STYLES = {
+    "up":    ("background:#E8F5E9;border-color:#A5D6A7;", "dir-up",    "📈 Likely UP"),
+    "down":  ("background:#FFEBEE;border-color:#EF9A9A;", "dir-down",  "📉 Likely DOWN"),
+    "watch": ("background:#FFF8E1;border-color:#FFE082;", "dir-watch", "👀 Watch"),
+}
 
 
-def build_post_card(analysis):
-    post     = analysis["post"]
-    stocks   = analysis["affected_stocks"]
-    urgency  = analysis["urgency"]
-    is_news  = post.get("is_news", False)
+def build_card(a):
+    person   = a["person"]
+    tier_lbl, tier_col, tier_bg = TIER_STYLES.get(person["tier"], TIER_STYLES[4])
 
-    # Post content box
-    source_icon = "📰" if is_news else "📣"
-    time_str    = post["time"].strftime("%b %d %Y · %H:%M UTC") if hasattr(post["time"], "strftime") else ""
-
-    # Urgency bar color
-    urgency_colors = {
-        "🚨 ACT NOW": ("#B71C1C", "#FFEBEE"),
-        "⚡ HIGH":    ("#E65100", "#FFF3E0"),
-        "📊 MEDIUM":  ("#1a237e", "#E8EAF6"),
-        "👀 LOW":     ("#555",    "#F5F5F5"),
-    }
-    u_color, u_bg = urgency_colors.get(urgency, ("#555", "#F5F5F5"))
+    # Urgency badge
+    urgency_html = f'<div class="urgency-badge" style="background:{a["u_bg"]};color:{a["u_color"]};">{a["urgency"]}</div>'
 
     # Stock chips
-    chips_html = ""
-    for ticker, info in list(stocks.items())[:6]:
-        chip_style, chip_color, chip_dir = sentiment_chip_style(info["sentiment"])
-        chips_html += f"""<div class="stock-chip" style="{chip_style}">
-      <div class="chip-ticker" style="color:{chip_color};">${ticker}</div>
-      <div class="chip-name">{info['name'][:30]}</div>
-      <div class="chip-dir" style="color:{chip_color};">{chip_dir}</div>
+    chips = ""
+    for ticker, info in list(a["affected"].items())[:6]:
+        style, css_class, label = DIR_STYLES.get(info["direction"], DIR_STYLES["watch"])
+        reason_short = info["reason"][:50]
+        chips += f"""<div class="stock-chip" style="{style}">
+      <div class="chip-ticker" style="color:{'#0A5D3E' if info['direction']=='up' else '#C62828' if info['direction']=='down' else '#F57F17'};">${ticker}</div>
+      <div class="chip-name">{reason_short}</div>
+      <div class="chip-dir {css_class}">{label}</div>
     </div>"""
 
-    # Action box
+    # Actions
     actions_html = "".join(
-        f'<div class="action-row">• {line}</div>'
-        for line in analysis["action_lines"]
+        f'<div class="action-item">• {act}</div>' for act in a["actions"][:4]
     )
 
-    # Meta (likes/reposts only for Truth Social)
-    meta_html = ""
-    if not is_news and (post.get("likes", 0) or post.get("reposts", 0)):
-        meta_html = f"""<div class="meta-row">
-      <div class="meta-item">❤️ <strong>{post.get('likes',0):,}</strong> likes</div>
-      <div class="meta-item">🔁 <strong>{post.get('reposts',0):,}</strong> reposts</div>
-      <div class="meta-item">📅 <strong>{time_str}</strong></div>
-    </div>"""
-    else:
-        meta_html = f'<div class="meta-row"><div class="meta-item">📅 <strong>{time_str}</strong></div></div>'
+    # Quote meta
+    time_str    = a["time"].strftime("%b %d · %H:%M UTC") if hasattr(a["time"], "strftime") else ""
+    source_str  = a["source"]
+    likes_html  = f'<div class="q-meta">❤️ <strong>{a.get("likes",0):,}</strong></div>' if a.get("likes") else ""
+    reposts_html= f'<div class="q-meta">🔁 <strong>{a.get("reposts",0):,}</strong></div>' if a.get("reposts") else ""
 
-    return f"""<div class="post-card">
-  <div class="post-top">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-      <div>
-        <span style="font-size:14px;font-weight:700;">{source_icon} {'Donald Trump · Truth Social' if not is_news else post['source']}</span>
-        <div style="font-size:11px;color:#999;margin-top:2px;">{time_str}</div>
-      </div>
-      <div style="text-align:right;">
-        <span style="font-size:20px;">{analysis['sentiment_emoji']}</span>
-        <div style="font-size:12px;font-weight:700;color:{analysis['sentiment_color']};">{analysis['overall_sentiment']}</div>
-      </div>
+    # Quote content
+    quote = a["content"][:500] + ("..." if len(a["content"]) > 500 else "")
+
+    return f"""<div class="card">
+  <div class="card-header" style="background:{tier_bg};border-bottom:1px solid #eee;">
+    <div class="person-emoji">{person['emoji']}</div>
+    <div class="person-info">
+      <div class="person-name" style="color:{tier_col};">{person['name']}</div>
+      <div class="person-role">{person['role']}</div>
+      <div class="tier-badge" style="background:{tier_col};color:#fff;">{tier_lbl}</div>
     </div>
+    {urgency_html}
   </div>
 
-  <div class="post-content">"{post['content'][:600]}{'...' if len(post['content']) > 600 else ''}"</div>
-
-  <div class="urgency-bar" style="background:{u_bg};">
-    <div class="urgency-label" style="color:{u_color};">{urgency}</div>
-    <div class="urgency-note">{analysis['urgency_note']}</div>
+  <div class="quote-box">"{quote}"</div>
+  <div class="quote-meta">
+    <div class="q-meta">📅 <strong>{time_str}</strong></div>
+    <div class="q-meta">📡 <strong>{source_str}</strong></div>
+    {likes_html}{reposts_html}
+    <div class="q-meta"><a href="{a['url']}" style="color:#1565C0;">View original →</a></div>
   </div>
 
-  <div class="stock-grid">{chips_html}</div>
-
-  <div class="info-box" style="background:#EEF4FF;border-left-color:#1a237e;">
-    <div style="font-size:10px;font-weight:700;color:#1a237e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Why these stocks move</div>
-    {'<br>'.join(f'<strong>${t}</strong> — {info["reason"]}' for t, info in list(stocks.items())[:4])}
+  <div class="why-box">
+    <div class="why-label">Why {person['name'].split()[0]} moves markets</div>
+    {person['why']}
   </div>
 
-  <div class="action-box" style="background:{analysis['sentiment_bg']};border-left-color:{analysis['sentiment_color']};">
-    <div class="action-title" style="color:{analysis['sentiment_color']};">💼 What to do for your TFSA</div>
+  <div class="stocks-label">📊 Stocks affected by this statement</div>
+  <div class="stocks-grid">{chips}</div>
+
+  <div class="action-box" style="background:{a['s_bg']};border-left-color:{a['s_color']};">
+    <div class="action-title" style="color:{a['s_color']};">
+      {a['s_emoji']} Overall Signal: {a['sentiment']} — What to do for your TFSA
+    </div>
     {actions_html}
-    <div style="font-size:11px;color:#888;margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.08);">
-      ⏱️ Trump-pump trades: hold 1-3 days max · Set stop loss at -5% immediately after buying ·
-      Take profit at +15-25% · News cycle moves fast — exit before it fades
+    <div class="hold-row">
+      <div class="hold-chip">
+        <div class="hl">⏱️ Suggested Hold</div>
+        <div class="hv">{a['hold']}</div>
+      </div>
+      <div class="hold-chip">
+        <div class="hl">🚪 Exit Signal</div>
+        <div class="hv">{a['exit']}</div>
+      </div>
     </div>
   </div>
-
-  {meta_html}
-  <div class="source-tag">Source: <a href="{post['url']}" style="color:#B71C1C;">View original →</a></div>
 </div>"""
 
 
-def build_quicklist(analyses):
-    if not analyses:
+def build_quicklist(top_items):
+    if not top_items:
         return ""
     rows = ""
-    for a in analyses[:5]:
-        content_preview = a["post"]["content"][:80].replace('"', "'")
-        tickers = " ".join(f"${t}" for t in list(a["affected_stocks"].keys())[:3])
+    for a in top_items[:6]:
+        snippet = a["content"][:70].replace('"', "'")
+        tickers = " ".join(f"${t}" for t in list(a["affected"].keys())[:3])
         rows += f"""<div class="ql-row">
-    <div class="ql-content">"{content_preview}..."</div>
-    <div class="ql-badge">{a['urgency'].split()[0]} · {tickers}</div>
+    <div class="ql-emoji">{a['person']['emoji']}</div>
+    <div class="ql-text">
+      <div class="ql-person">{a['person']['name']}</div>
+      <div class="ql-snippet">"{snippet}..." · {tickers}</div>
+    </div>
+    <div class="ql-badge">{a['urgency'].split()[0]}</div>
   </div>"""
-    return f"""<div class="quicklist">
-  <h2>⚡ Trump just posted — act fast</h2>
-  <p>Market-moving posts detected. Full analysis below each card. Time is critical.</p>
+    return f"""<div class="quick">
+  <h2>⚡ Today's Market-Moving Statements</h2>
+  <p>Click any card below for full analysis and what to buy.</p>
   {rows}
 </div>"""
 
 
-def build_html_email(act_now, high, medium, low, total):
+def build_html_email(by_urgency, total_scanned):
     now      = datetime.now(timezone.utc)
     date_str = now.strftime("%A, %B %d %Y · %H:%M UTC")
 
-    all_analyses = act_now + high + medium + low
-    top_analyses = sorted(all_analyses, key=lambda x: (
-        {"🚨 ACT NOW":0,"⚡ HIGH":1,"📊 MEDIUM":2,"👀 LOW":3}.get(x["urgency"],9)
-    ))
+    act_now  = by_urgency.get("act_now",  [])
+    act_today= by_urgency.get("act_today",[])
+    act_week = by_urgency.get("act_week", [])
+    monitor  = by_urgency.get("monitor",  [])
 
-    html = f"""<!DOCTYPE html><html><head><meta charset="UTF-8">{CSS}</head>
+    all_items = act_now + act_today + act_week + monitor
+    total_act  = len(act_now) + len(act_today) + len(act_week)
+
+    bullish  = sum(1 for a in all_items if "BULLISH" in a["sentiment"])
+    bearish  = sum(1 for a in all_items if "BEARISH" in a["sentiment"])
+
+    # Count unique people
+    people_seen = len(set(a["person_key"] for a in all_items))
+
+    html = f"""<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Market Movers Alert</title>
+{CSS}
+</head>
 <body><div class="wrap">
+
+<!-- HEADER -->
 <div class="header">
-  <h1>🇺🇸 Phase 6 · Trump Market Monitor</h1>
-  <p>{date_str} · Truth Social + News · Auto-detected stock impact</p>
+  <div class="header-top">
+    <div>
+      <h1>📡 Market Movers Monitor</h1>
+      <div class="sub">Phase 6 · 20 Most Influential People · {date_str}</div>
+    </div>
+    <div class="live-badge">LIVE</div>
+  </div>
 </div>
-<div class="body">
 
-  <div style="display:flex;justify-content:space-around;padding:16px 10px 8px;border-bottom:1px solid #f0f0f0;">
-    <div class="summary-stat"><div class="num" style="color:#B71C1C;">{len(act_now)}</div><div class="desc">🚨 Act Now</div></div>
-    <div class="summary-stat"><div class="num" style="color:#E65100;">{len(high)}</div><div class="desc">⚡ High</div></div>
-    <div class="summary-stat"><div class="num" style="color:#1a237e;">{len(medium)}</div><div class="desc">📊 Medium</div></div>
-    <div class="summary-stat"><div class="num" style="color:#888;">{total}</div><div class="desc">Total posts scanned</div></div>
-  </div>
+<!-- SUMMARY BAR -->
+<div class="summary-bar">
+  <div class="stat"><div class="num" style="color:#B71C1C;">{len(act_now)}</div><div class="lbl">🚨 Act Now</div></div>
+  <div class="stat"><div class="num" style="color:#E65100;">{len(act_today)}</div><div class="lbl">⚡ Act Today</div></div>
+  <div class="stat"><div class="num" style="color:#1565C0;">{len(act_week)}</div><div class="lbl">📊 This Week</div></div>
+  <div class="stat"><div class="num" style="color:#0A5D3E;">{bullish}</div><div class="lbl">📈 Bullish</div></div>
+  <div class="stat"><div class="num" style="color:#C62828;">{bearish}</div><div class="lbl">📉 Bearish</div></div>
+  <div class="stat"><div class="num" style="color:#555;">{people_seen}</div><div class="lbl">👤 People</div></div>
+</div>
 
-  {build_quicklist(top_analyses[:5])}
+{build_quicklist(act_now + act_today)}
 
-  <div class="section">
-    <p style="font-size:12px;color:#888;margin:12px 0 0;">
-      These posts were detected in the last 60-90 minutes from Trump's Truth Social and mainstream news.
-      Each card shows which stocks are affected, whether the move is likely UP or DOWN,
-      and exactly what to do for your TFSA.<br>
-      <strong style="color:#D32F2F;">⚡ Trump-pump trades are fast. Act within 30-60 minutes of the post for best results.</strong><br>
-      <strong style="color:#EF9F27;">⚠️ Not financial advice. Always do your own research. Trading involves risk of loss.</strong>
-    </p>
-  </div>
-"""
+<div class="section">
+  <p style="font-size:12px;color:#888;margin:12px 0 0;">
+    We track the <strong>20 most market-moving people on Earth</strong> — politicians, CEOs, Fed officials,
+    and macro investors. Each card explains what they said, which stocks it affects, the direction,
+    and exactly what to do in your TFSA.<br>
+    <strong style="color:#E65100;">⚡ News-driven trades are fast. For Tier 1 alerts, act within 30-60 minutes.</strong><br>
+    <strong style="color:#F57F17;">⚠️ Not financial advice. Always do your own research. Losses are possible.</strong>
+  </p>
+</div>"""
 
     if act_now:
-        html += '<div class="section"><div class="section-head">🚨 Act Now — Check Market Immediately</div>'
-        for a in act_now: html += build_post_card(a)
+        html += '<div class="section"><div class="section-title">🚨 Act Within Minutes — Tier 1 Statements</div>'
+        for a in act_now: html += build_card(a)
         html += '</div><div class="divider"></div>'
 
-    if high:
-        html += '<div class="section"><div class="section-head">⚡ High Priority — Worth Acting On</div>'
-        for a in high: html += build_post_card(a)
+    if act_today:
+        html += '<div class="section"><div class="section-title">⚡ Act Today — High Impact Statements</div>'
+        for a in act_today: html += build_card(a)
         html += '</div><div class="divider"></div>'
 
-    if medium:
-        html += '<div class="section"><div class="section-head">📊 Medium — Monitor and Watch</div>'
-        for a in medium: html += build_post_card(a)
+    if act_week:
+        html += '<div class="section"><div class="section-title">📊 Act This Week — Sector & Company Moves</div>'
+        for a in act_week: html += build_card(a)
         html += '</div><div class="divider"></div>'
 
-    if low:
-        html += '<div class="section"><div class="section-head">👀 Low — General Market Language</div>'
-        for a in low[:3]: html += build_post_card(a)  # cap at 3
+    if monitor:
+        html += '<div class="section"><div class="section-title">👀 Monitor — Macro & Sentiment Signals</div>'
+        for a in monitor[:3]: html += build_card(a)
         html += '</div>'
 
     html += f"""
-  <div class="divider"></div>
-  <div class="footer">
-    Phase 6 Trump Market Monitor · Runs every 5 min via GitHub Actions<br>
-    Sources: Truth Social (CNN Archive) · trumpstruth.org · Google News<br>
-    Trump-pump strategy: buy within 30-60 min · hold 1-3 days · exit at +15-25% · stop loss at -5%<br>
-    Research and education only — not financial advice. Trading involves risk of loss.<br>
-    <a href="https://truthsocial.com/@realDonaldTrump" style="color:#B71C1C;">Trump's Truth Social →</a>
-  </div>
-</div></div></body></html>"""
+<div class="divider"></div>
+<div class="footer-bar">
+  <strong>Phase 6 Market Movers Monitor</strong> · Runs every 5 min via GitHub Actions<br>
+  20 people tracked: Trump · Musk · Warsh · Powell · Buffett · Jensen · Dimon · Altman · Bessent
+  · Zuckerberg · Cook · Nadella · Jassy · Ellison · RFK · Xi · MBS · Cathie Wood · Burry + more<br>
+  Sources: Truth Social (CNN) · trumpstruth.org · Google News · Yahoo Finance<br>
+  Research and education only — not financial advice. Trading involves risk of loss.<br>
+  <a href="https://truthsocial.com/@realDonaldTrump" style="color:#1565C0;">Trump's Truth Social</a> &nbsp;·&nbsp;
+  <a href="https://finance.yahoo.com" style="color:#1565C0;">Yahoo Finance</a>
+</div>
+</div></body></html>"""
 
     return html
 
 
-def build_text_email(act_now, high, medium):
+def build_text_email(by_urgency):
     now   = datetime.now(timezone.utc)
     lines = [
         "=" * 65,
-        f" PHASE 6 TRUMP MARKET MONITOR — {now.strftime('%Y-%m-%d %H:%M UTC')}",
-        f" {len(act_now)} Act Now · {len(high)} High · {len(medium)} Medium",
+        f" PHASE 6 MARKET MOVERS — {now.strftime('%Y-%m-%d %H:%M UTC')}",
         "=" * 65,
     ]
-    for a in (act_now + high + medium)[:10]:
-        lines.append(f"\n  {a['urgency']} — {a['overall_sentiment']}")
-        lines.append(f"  \"{a['post']['content'][:120]}...\"")
-        tickers = ", ".join(f"${t}" for t in a["affected_stocks"])
-        lines.append(f"  Stocks affected: {tickers}")
-        for line in a["action_lines"][:2]:
-            lines.append(f"    → {line[:100]}")
+    for category, label in [("act_now","🚨 ACT NOW"),("act_today","⚡ ACT TODAY"),("act_week","📊 THIS WEEK")]:
+        items = by_urgency.get(category, [])
+        if not items:
+            continue
+        lines.append(f"\n{label}:")
+        for a in items:
+            lines.append(f"\n  {a['person']['emoji']} {a['person']['name']} ({a['person']['role']})")
+            lines.append(f"  \"{a['content'][:120]}...\"")
+            lines.append(f"  Signal: {a['sentiment']} | Source: {a['source']}")
+            tickers = ", ".join(f"${t}({info['direction'].upper()})" for t,info in list(a["affected"].items())[:4])
+            lines.append(f"  Stocks: {tickers}")
+            lines.append(f"  Hold: {a['hold']} | Exit: {a['exit']}")
     lines += ["", "=" * 65, " Not financial advice. Research before investing.", "=" * 65]
     return "\n".join(lines)
 
@@ -939,79 +1260,89 @@ def send_email(subject, html_body, text_body):
 
 def run():
     now = datetime.now(timezone.utc)
-    print(f"🇺🇸 Phase 6 Trump Market Monitor — {now.strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"📡 Phase 6 Market Movers Monitor — {now.strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"   Tracking {len(MARKET_MOVERS)} influential people")
 
-    seen = load_seen()
-    all_posts = []
+    seen      = load_seen()
+    all_items = []
+    new_hashes= set()
 
-    # ── Fetch all sources ─────────────────────────────────────
-    print("\n[1/3] CNN Truth Social archive (live, 5-min updates)...")
-    cnn_posts = fetch_cnn_truth_archive(hours_back=1)
-    all_posts.extend(cnn_posts)
-
-    print("\n[2/3] trumpstruth.org RSS (backup source)...")
-    rss_posts = fetch_trumpstruth_rss()
-    all_posts.extend(rss_posts)
-
-    print("\n[3/3] Google News (Trump market/stock news)...")
-    news_posts = fetch_google_news()
-    all_posts.extend(news_posts)
-
-    print(f"\n  Total posts/articles fetched: {len(all_posts)}")
-
-    # ── Deduplicate ────────────────────────────────────────────
-    new_posts  = []
-    new_hashes = set()
-    for p in all_posts:
-        h = post_hash(p["id"], p["source"])
+    # ── Source 1: Trump Truth Social ─────────────────────────
+    print("\n[1/4] Truth Social (CNN archive)...")
+    for post in fetch_trump_truth_social():
+        h = item_hash(post["content"], post["source"])
         if h not in seen and h not in new_hashes:
-            new_posts.append(p)
+            all_items.append(post)
             new_hashes.add(h)
 
-    print(f"  New posts (not previously emailed): {len(new_posts)}")
+    # ── Source 2: Trump RSS backup ────────────────────────────
+    print("[2/4] trumpstruth.org RSS backup...")
+    for post in fetch_trumpstruth_rss():
+        h = item_hash(post["content"], post["source"])
+        if h not in seen and h not in new_hashes:
+            all_items.append(post)
+            new_hashes.add(h)
 
-    if not new_posts:
-        print("  No new posts this run. No email sent.")
+    # ── Source 3: Google News for each person ─────────────────
+    print("[3/4] Google News for all 20 people...")
+    for person_key, person_data in MARKET_MOVERS.items():
+        if person_data.get("source") == "news":
+            articles = fetch_google_news_for_person(person_key, person_data)
+            for a in articles:
+                h = item_hash(a["content"], a["source"])
+                if h not in seen and h not in new_hashes:
+                    all_items.append(a)
+                    new_hashes.add(h)
+            time.sleep(0.5)
+
+    # ── Source 4: Yahoo Finance ───────────────────────────────
+    print("[4/4] Yahoo Finance top stories...")
+    for a in fetch_yahoo_finance_rss():
+        h = item_hash(a["content"], a["source"])
+        if h not in seen and h not in new_hashes:
+            all_items.append(a)
+            new_hashes.add(h)
+
+    print(f"\n  New items: {len(all_items)}")
+
+    if not all_items:
+        print("  Nothing new. No email sent.")
         return
 
-    # ── Analyse each post ─────────────────────────────────────
-    act_now = []
-    high    = []
-    medium  = []
-    low     = []
+    # ── Analyse each item ─────────────────────────────────────
+    by_urgency = {"act_now": [], "act_today": [], "act_week": [], "monitor": []}
 
-    for post in new_posts:
-        analysis = analyse_market_impact(post)
-        if analysis is None:
+    for item in all_items:
+        result = analyse(item)
+        if result is None:
             continue
-        urgency = analysis["urgency"]
-        if "ACT NOW"  in urgency: act_now.append(analysis)
-        elif "HIGH"   in urgency: high.append(analysis)
-        elif "MEDIUM" in urgency: medium.append(analysis)
-        else:                     low.append(analysis)
+        if "MINUTES" in result["urgency"]:   by_urgency["act_now"].append(result)
+        elif "TODAY"  in result["urgency"]:   by_urgency["act_today"].append(result)
+        elif "WEEK"   in result["urgency"]:   by_urgency["act_week"].append(result)
+        else:                                 by_urgency["monitor"].append(result)
 
-    total_actionable = len(act_now) + len(high) + len(medium) + len(low)
-    print(f"  Market-relevant: {total_actionable} | Act Now: {len(act_now)} | High: {len(high)} | Medium: {len(medium)}")
+    total_act = sum(len(v) for v in by_urgency.values())
+    print(f"  Actionable: {total_act} | Act Now: {len(by_urgency['act_now'])} | Today: {len(by_urgency['act_today'])} | Week: {len(by_urgency['act_week'])}")
 
-    # ── Only email if actionable content exists ────────────────
-    if not act_now and not high and not medium:
-        print("  No market-moving posts detected. No email sent.")
+    # ── Only email if something actionable ────────────────────
+    act_count = len(by_urgency["act_now"]) + len(by_urgency["act_today"])
+    if act_count == 0 and not by_urgency["act_week"]:
+        print("  No actionable signals. No email sent.")
         save_seen(seen | new_hashes)
         return
 
     # ── Build email ────────────────────────────────────────────
-    html_body = build_html_email(act_now, high, medium, low, len(new_posts))
-    text_body = build_text_email(act_now, high, medium)
+    html_body = build_html_email(by_urgency, len(all_items))
+    text_body = build_text_email(by_urgency)
 
-    # Subject line — make it feel urgent
-    urgency_tag = "🚨 ACT NOW" if act_now else "⚡ HIGH PRIORITY" if high else "📊 MONITOR"
-    top_tickers = []
-    for a in (act_now + high)[:3]:
-        top_tickers.extend(list(a["affected_stocks"].keys())[:2])
-    ticker_str  = " ".join(f"${t}" for t in dict.fromkeys(top_tickers)[:4])
+    # ── Subject line ──────────────────────────────────────────
+    top_people = []
+    for a in (by_urgency["act_now"] + by_urgency["act_today"])[:3]:
+        top_people.append(a["person"]["name"].split()[0])
 
-    subject = (f"🇺🇸 {urgency_tag}: Trump posted about {ticker_str or 'markets'} · "
-               f"{len(act_now)+len(high)} urgent · {now.strftime('%H:%M UTC')}")
+    urgency_tag = "🚨 ACT NOW" if by_urgency["act_now"] else "⚡ ACT TODAY" if by_urgency["act_today"] else "📊 THIS WEEK"
+    subject = (f"📡 {urgency_tag}: {' · '.join(top_people) or 'Market Movers'} "
+               f"— {act_count} alerts · {now.strftime('%H:%M UTC')}")
 
     print(text_body)
     save_seen(seen | new_hashes)
