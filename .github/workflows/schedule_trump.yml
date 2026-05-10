@@ -1,0 +1,55 @@
+name: 🇺🇸 Phase 6 · Trump Market Monitor
+
+on:
+  schedule:
+    # ─────────────────────────────────────────────────────────
+    # Runs every 5 minutes — 24 hours a day, 7 days a week.
+    #
+    # WHY every 5 minutes?
+    #   Trump's Truth Social posts move stocks within MINUTES.
+    #   The CNN archive updates every 5 minutes.
+    #   A 10-15 minute delay means you miss the best entry price.
+    #   5 minutes is the sweet spot — fast enough to act on,
+    #   not so fast you exhaust GitHub Actions minutes.
+    #
+    # MINUTES USAGE:
+    #   5 min × 288 runs/day × ~2 min/run = ~576 min/day
+    #   BUT: most runs send NO email (nothing market-moving).
+    #   Actual compute time per run is ~1-2 min.
+    #   Monthly: ~576 × 30 = ~17,280 min/month
+    #   → Requires GitHub Team ($4/mo, 50,000 min) OR
+    #     reduce to */10 (every 10 min) to cut usage in half.
+    #
+    # To run every 10 minutes instead: '*/10 * * * *'
+    # To run every 15 minutes instead: '*/15 * * * *'
+    # ─────────────────────────────────────────────────────────
+    - cron: '*/5 * * * *'
+
+  # Manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  trump-monitor:
+    name: Scan Trump Truth Social + News for Stock Mentions
+    runs-on: ubuntu-latest
+    timeout-minutes: 4   # must finish before next 5-min run starts
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        # Only needs requests — zero paid APIs, zero API keys
+        run: pip install requests
+
+      - name: Run Phase 6 Trump Market Monitor
+        env:
+          EMAIL_SENDER:    ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD:  ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+        run: python phase6_trump_monitor.py
