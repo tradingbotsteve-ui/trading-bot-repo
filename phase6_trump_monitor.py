@@ -448,6 +448,80 @@ MARKET_MOVERS = {
         "bg":    "#ECEFF1",
         "source": "news",
     },
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # CANADA — MARKET MOVERS AFFECTING TSX + TFSA
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    "carney": {
+        "name":    "Mark Carney",
+        "tier":    2,
+        "emoji":   "🍁",
+        "role":    "Prime Minister of Canada (2025–)",
+        "why":     "Former Bank of Canada and Bank of England governor. Now Canada's PM. His trade policy with the US (tariffs, USMCA), carbon tax decisions, and housing policy directly affect the entire TSX. The Trump-Carney relationship is the most important bilateral relationship for Canadian stocks. Any Canada-US trade statement = TSX moves.",
+        "keywords": ["mark carney", "carney", "prime minister canada", "canadian government", "usmca canada", "canada tariff", "canada trade", "carbon tax canada"],
+        "primary_stocks": {
+            "SHOP": ("Shopify",        "Canada's most valuable company — trade policy affects SHOP"),
+            "ENB":  ("Enbridge",       "Pipeline policy = Carney's biggest energy decision"),
+            "RY":   ("Royal Bank",     "Canada's biggest bank — moves on PM economic policy"),
+            "XIU":  ("iShares S&P/TSX","Entire TSX ETF — Carney macro policy = broad Canada move"),
+            "SU":   ("Suncor Energy",  "Oil sands — Canadian energy policy affects SU directly"),
+        },
+        "color": "#B71C1C",
+        "bg":    "#FFEBEE",
+        "source": "news",
+    },
+
+    "macklem": {
+        "name":    "Tiff Macklem",
+        "tier":    2,
+        "emoji":   "🏦",
+        "role":    "Governor, Bank of Canada",
+        "why":     "Canada's equivalent of the Fed Chair. Controls Canadian interest rates. Rate decisions move ALL Canadian bank stocks (RY, TD, BNS, BMO, CM) plus the housing market and REIT sector. Bank of Canada rate decisions happen 8 times per year and each one moves the TSX.",
+        "keywords": ["tiff macklem", "macklem", "bank of canada", "boc rate", "canadian interest rate", "boc decision", "overnight rate canada", "canadian inflation"],
+        "primary_stocks": {
+            "RY":   ("Royal Bank",     "Largest Canadian bank — rate moves hit RY hardest"),
+            "TD":   ("TD Bank",        "Second largest — rates affect mortgage book"),
+            "BNS":  ("Scotiabank",     "Big Five bank — rate sensitive"),
+            "BMO":  ("BMO",            "Big Five bank — rate sensitive"),
+            "REI.UN":("RioCan REIT",   "Canadian real estate — rates directly = REIT values"),
+        },
+        "color": "#0d47a1",
+        "bg":    "#E3F2FD",
+        "source": "news",
+    },
+
+    "watsa": {
+        "name":    "Prem Watsa",
+        "tier":    3,
+        "emoji":   "🦁",
+        "role":    "CEO Fairfax Financial · Canada's Warren Buffett",
+        "why":     "Known as Canada's Warren Buffett. Fairfax Financial holds massive positions in Canadian and global stocks. When Watsa makes a large buy or sell, Bay Street follows. His macro calls on inflation and interest rates have been remarkably accurate. 13F filings watched by every Canadian institutional investor.",
+        "keywords": ["prem watsa", "watsa", "fairfax financial", "fairfax", "blackberry fairfax", "watsa buys", "watsa sells"],
+        "primary_stocks": {
+            "FFH":  ("Fairfax Financial","His company — Watsa statements move FFH directly on TSX"),
+            "BB":   ("BlackBerry",     "Fairfax is BlackBerry's largest shareholder"),
+            "RY":   ("Royal Bank",     "Fairfax holds Canadian financials — moves on Watsa macro calls"),
+        },
+        "color": "#4527A0",
+        "bg":    "#EDE7F6",
+        "source": "news",
+    },
+
+    "thomson": {
+        "name":    "David Thomson",
+        "tier":    4,
+        "emoji":   "📰",
+        "role":    "Chair Thomson Reuters · Richest Canadian",
+        "why":     "Canada's richest person. Thomson Reuters controls global financial data and news infrastructure. TRI.TO is a proxy for global information services. Thomson family moves at Woodbridge (holding company) affect TRI and broader Canadian market sentiment.",
+        "keywords": ["david thomson", "thomson reuters", "woodbridge", "thomson family", "tri", "reuters"],
+        "primary_stocks": {
+            "TRI":  ("Thomson Reuters", "His family company — Thomson news moves TRI on NYSE/TSX"),
+        },
+        "color": "#1B5E20",
+        "bg":    "#E8F5E9",
+        "source": "news",
+    },
 }
 
 
@@ -491,17 +565,32 @@ TICKER_SIGNALS = {
     "military":       [("LMT","up"),("RTX","up"),("NOC","up")],
     "nuclear":        [("CEG","up"),("VST","up"),("CCJ","up")],
     "solar":          [("FSLR","up"),("ENPH","up"),("NEE","up")],
-    "energy":         [("XOM","watch"),("CVX","watch"),("NEE","watch")],
-    "recession":      [("GLD","up"),("TLT","up"),("SPY","down")],
+    "energy":         [("XOM","watch"),("CVX","watch"),("NEE","watch"),("ENB","watch"),("SU","watch")],
+    "recession":      [("GLD","up"),("TLT","up"),("SPY","down"),("XIU","down")],
     "inflation":      [("GLD","up"),("TLT","down"),("SPY","down")],
-    "deal":           [("SPY","up"),("DJT","watch")],
+    "deal":           [("SPY","up"),("DJT","watch"),("XIU","up")],
     "sanction":       [("XOM","up"),("LMT","up"),("RTX","up")],
     "ban":            [("NVDA","watch"),("SPY","watch")],
     "steel":          [("X","up"),("NUE","up")],
-    "gold":           [("GLD","up"),("NEM","up")],
-    "bank":           [("JPM","watch"),("BAC","watch"),("GS","watch")],
+    "gold":           [("GLD","up"),("NEM","up"),("ABX","up")],
+    "bank":           [("JPM","watch"),("BAC","watch"),("GS","watch"),("RY","watch"),("TD","watch")],
+    # ── Canada-specific signals ──────────────────────────────
     "shopify":        [("SHOP","watch")],
-    "canada":         [("ENB","watch"),("SU","watch"),("SHOP","watch")],
+    "canada":         [("ENB","watch"),("SU","watch"),("SHOP","watch"),("RY","watch"),("TD","watch"),("CNR","watch")],
+    "canadian":       [("ENB","watch"),("SU","watch"),("CP","watch"),("CNR","watch")],
+    "bank of canada": [("RY","watch"),("TD","watch"),("BNS","watch"),("BMO","watch"),("CM","watch")],
+    "interest rate canada": [("RY","watch"),("TD","watch"),("XIU","watch")],
+    "tsx":            [("XIU","watch"),("SHOP","watch"),("RY","watch")],
+    "pipeline":       [("ENB","up"),("TRP","up"),("PPL","up")],
+    "oil sands":      [("SU","up"),("CNQ","up"),("IMO","up")],
+    "potash":         [("NTR","watch"),("MOS","watch")],
+    "lumber":         [("WFG","watch"),("WY","watch")],
+    "railways":       [("CNR","watch"),("CP","watch")],
+    "housing canada": [("RY","watch"),("TD","watch"),("BNS","watch")],
+    "mark carney":    [("RY","watch"),("TD","watch"),("SHOP","watch"),("XIU","watch")],
+    "carney":         [("RY","watch"),("TD","watch"),("XIU","watch")],
+    "tariff canada":  [("SHOP","down"),("CNR","down"),("SU","watch"),("ENB","watch")],
+    "usmca":          [("GM","watch"),("F","watch"),("ENB","watch"),("SU","watch")],
 }
 
 TICKER_PATTERN = re.compile(r'\$([A-Z]{1,5})\b')
@@ -908,14 +997,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,san
 .wrap{max-width:700px;margin:0 auto;}
 
 /* ── HEADER ── */
-.header{background:linear-gradient(135deg,#0D1B4B 0%,#1a237e 50%,#283593 100%);
-  color:#fff;padding:28px 28px 22px;border-radius:16px 16px 0 0;
-  border-bottom:3px solid #3949ab;}
+.header{background:#1a237e;padding:28px 28px 22px;border-radius:16px 16px 0 0;
+  border-bottom:4px solid #E53935;}
 .header-top{display:flex;justify-content:space-between;align-items:flex-start;}
-.header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px;}
-.header .sub{margin:4px 0 0;font-size:13px;opacity:.75;}
-.live-badge{background:#E53935;color:#fff;font-size:11px;font-weight:700;
-  padding:3px 10px;border-radius:20px;letter-spacing:.5px;}
+.header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.3px;
+  color:#FFFFFF !important;}
+.header .sub{margin:6px 0 0;font-size:13px;color:#C5CAE9 !important;}
+.live-badge{background:#E53935;color:#ffffff;font-size:11px;font-weight:700;
+  padding:4px 12px;border-radius:20px;letter-spacing:.5px;}
 
 /* ── SUMMARY BAR ── */
 .summary-bar{background:#fff;border:1px solid #e0e0e0;border-top:none;
@@ -983,19 +1072,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,san
 .hold-chip .hv{font-size:12px;font-weight:600;color:#333;}
 
 /* ── QUICK LIST ── */
-.quick{background:linear-gradient(135deg,#0D1B4B,#1a237e);
+.quick{background:#1a237e;
   border-radius:12px;padding:18px 20px;color:#fff;margin:16px 20px 0;}
-.quick h2{margin:0 0 4px;font-size:15px;font-weight:800;}
-.quick p{margin:0 0 14px;font-size:12px;opacity:.8;}
+.quick h2{margin:0 0 4px;font-size:15px;font-weight:800;color:#ffffff;}
+.quick p{margin:0 0 14px;font-size:12px;color:#C5CAE9;}
 .ql-row{display:flex;align-items:center;gap:12px;padding:9px 0;
-  border-bottom:1px solid rgba(255,255,255,.15);}
+  border-bottom:1px solid rgba(255,255,255,.2);}
 .ql-row:last-child{border:none;padding-bottom:0;}
 .ql-emoji{font-size:22px;flex-shrink:0;}
 .ql-text{flex:1;}
-.ql-person{font-size:13px;font-weight:700;}
-.ql-snippet{font-size:11px;opacity:.8;margin-top:1px;}
-.ql-badge{font-size:11px;background:rgba(255,255,255,.2);
-  padding:3px 10px;border-radius:10px;font-weight:700;white-space:nowrap;}
+.ql-person{font-size:13px;font-weight:700;color:#ffffff;}
+.ql-snippet{font-size:11px;color:#C5CAE9;margin-top:1px;}
+.ql-badge{font-size:11px;background:rgba(255,255,255,.25);
+  padding:3px 10px;border-radius:10px;font-weight:700;white-space:nowrap;color:#ffffff;}
 
 /* ── FOOTER ── */
 .footer-bar{background:#fff;border:1px solid #e0e0e0;border-top:none;
@@ -1119,6 +1208,148 @@ def build_quicklist(top_items):
 </div>"""
 
 
+def build_consolidated_table(all_items):
+    """
+    Builds the consolidated action table shown at the BOTTOM of every email.
+    One row per unique ticker. Shows:
+      - Stock ticker + name
+      - Action (BUY / SELL / WATCH)
+      - Why (which person + reason, plain English)
+      - Exchange (NYSE/TSX)
+      - Urgency
+    This is your quick-reference cheat sheet for the whole email.
+    """
+    if not all_items:
+        return ""
+
+    # Aggregate all affected stocks across all items
+    ticker_data = {}  # ticker → {action, reasons, urgency, people}
+    for a in all_items:
+        person_name = a["person"]["name"].split()[0]  # first name only
+        urgency     = a["urgency"]
+        for ticker, info in a["affected"].items():
+            if ticker not in ticker_data:
+                ticker_data[ticker] = {
+                    "direction": info["direction"],
+                    "reasons":   [],
+                    "urgency":   urgency,
+                    "people":    [],
+                    "sentiment": a["sentiment"],
+                }
+            ticker_data[ticker]["reasons"].append(info["reason"][:60])
+            if person_name not in ticker_data[ticker]["people"]:
+                ticker_data[ticker]["people"].append(person_name)
+            # Escalate urgency if needed
+            u_order = {"🚨 ACT WITHIN MINUTES": 0, "⚡ ACT TODAY": 1, "📊 ACT THIS WEEK": 2, "👀 MONITOR": 3}
+            if u_order.get(urgency, 9) < u_order.get(ticker_data[ticker]["urgency"], 9):
+                ticker_data[ticker]["urgency"] = urgency
+
+    if not ticker_data:
+        return ""
+
+    # Sort: buys first, then by urgency
+    dir_order = {"up": 0, "down": 1, "watch": 2}
+    sorted_tickers = sorted(ticker_data.items(),
+                            key=lambda x: (dir_order.get(x[1]["direction"], 9), x[0]))
+
+    # Known exchange map (TSX tickers)
+    tsx_tickers = {"SHOP","RY","TD","BNS","BMO","CM","ENB","SU","CNR","CP","TRP",
+                   "PPL","ABX","NTR","WFG","XIU","FFH","BB","TRI","MFC","SLF",
+                   "CNQ","IMO","REI.UN","ATD","BCE","T","TECK","FM","G","K"}
+
+    rows = ""
+    for ticker, data in sorted_tickers[:25]:  # cap at 25 rows
+        direction = data["direction"]
+        people    = ", ".join(data["people"][:3])
+        reason    = data["reasons"][0] if data["reasons"] else "Market-moving statement detected"
+        exchange  = "TSX" if ticker in tsx_tickers else "NYSE/NASDAQ"
+        urgency_short = data["urgency"].split()[0]  # just the emoji
+
+        if direction == "up":
+            action_html = '<span style="background:#D4F5E9;color:#0A5D3E;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;">✅ BUY</span>'
+        elif direction == "down":
+            action_html = '<span style="background:#FFEBEE;color:#C62828;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;">🔴 SELL/AVOID</span>'
+        else:
+            action_html = '<span style="background:#FFF8E1;color:#F57F17;font-weight:700;padding:3px 10px;border-radius:6px;font-size:12px;">👀 WATCH</span>'
+
+        exch_color = "#B71C1C" if exchange == "TSX" else "#1565C0"
+
+        rows += f"""<tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:10px 12px;font-weight:800;font-size:15px;color:#1a1a1a;">${ticker}</td>
+      <td style="padding:10px 12px;">{action_html}</td>
+      <td style="padding:10px 12px;font-size:12px;color:#555;">{people}</td>
+      <td style="padding:10px 12px;font-size:12px;color:#444;max-width:220px;">{reason}</td>
+      <td style="padding:10px 12px;text-align:center;">
+        <span style="background:{'#FFEBEE' if exchange=='TSX' else '#E3F2FD'};color:{exch_color};
+          font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;">{exchange}</span>
+      </td>
+      <td style="padding:10px 12px;text-align:center;font-size:15px;">{urgency_short}</td>
+    </tr>"""
+
+    buy_count   = sum(1 for _, d in sorted_tickers if d["direction"] == "up")
+    sell_count  = sum(1 for _, d in sorted_tickers if d["direction"] == "down")
+    watch_count = sum(1 for _, d in sorted_tickers if d["direction"] == "watch")
+
+    return f"""
+<div class="divider"></div>
+<div class="section" style="padding-bottom:20px;">
+  <div style="background:#fff;border:1px solid #e0e0e0;border-radius:14px;overflow:hidden;
+    box-shadow:0 2px 8px rgba(0,0,0,.06);">
+
+    <!-- Table Header -->
+    <div style="background:#1a237e;padding:16px 20px;">
+      <div style="font-size:16px;font-weight:800;color:#ffffff;">
+        📋 Consolidated Action Table — Full Stock Summary
+      </div>
+      <div style="font-size:12px;color:#C5CAE9;margin-top:4px;">
+        Every stock mentioned in this email · sorted by action · US &amp; Canadian markets
+      </div>
+      <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;">
+        <span style="background:#D4F5E9;color:#0A5D3E;font-size:12px;font-weight:700;
+          padding:4px 12px;border-radius:20px;">✅ BUY: {buy_count} stocks</span>
+        <span style="background:#FFEBEE;color:#C62828;font-size:12px;font-weight:700;
+          padding:4px 12px;border-radius:20px;">🔴 SELL/AVOID: {sell_count} stocks</span>
+        <span style="background:#FFF8E1;color:#F57F17;font-size:12px;font-weight:700;
+          padding:4px 12px;border-radius:20px;">👀 WATCH: {watch_count} stocks</span>
+      </div>
+    </div>
+
+    <!-- Key: holding period reminder -->
+    <div style="background:#FFFDE7;padding:10px 20px;border-bottom:1px solid #f0f0f0;
+      font-size:12px;color:#555;line-height:1.6;">
+      <strong>📌 Reminder:</strong>
+      🚨 Act Now = enter within 30-60 min, hold 1-3 days, stop loss -5% &nbsp;|&nbsp;
+      ⚡ Act Today = enter today, hold 3-14 days &nbsp;|&nbsp;
+      📊 This Week = hold weeks to months &nbsp;|&nbsp;
+      👀 Monitor = wait for more signals &nbsp;|&nbsp;
+      <strong>All TFSA gains are tax-free in Canada.</strong>
+    </div>
+
+    <!-- Table -->
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-family:-apple-system,sans-serif;">
+        <thead>
+          <tr style="background:#f8f9fa;border-bottom:2px solid #e0e0e0;">
+            <th style="padding:10px 12px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px;">Ticker</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px;">Action</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px;">Who Said It</th>
+            <th style="padding:10px 12px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px;">Why</th>
+            <th style="padding:10px 12px;text-align:center;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px;">Market</th>
+            <th style="padding:10px 12px;text-align:center;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.5px;">Speed</th>
+          </tr>
+        </thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </div>
+
+    <div style="padding:12px 20px;background:#f8f9fa;font-size:11px;color:#999;line-height:1.6;">
+      Not financial advice · Research before investing · TFSA losses are not tax-deductible ·
+      Stop losses protect your capital · Never invest more than you can afford to lose
+    </div>
+  </div>
+</div>"""
+
+
 def build_html_email(by_urgency, total_scanned):
     now      = datetime.now(timezone.utc)
     date_str = now.strftime("%A, %B %d %Y · %H:%M UTC")
@@ -1169,13 +1400,22 @@ def build_html_email(by_urgency, total_scanned):
 {build_quicklist(act_now + act_today)}
 
 <div class="section">
-  <p style="font-size:12px;color:#888;margin:12px 0 0;">
-    We track the <strong>20 most market-moving people on Earth</strong> — politicians, CEOs, Fed officials,
-    and macro investors. Each card explains what they said, which stocks it affects, the direction,
-    and exactly what to do in your TFSA.<br>
-    <strong style="color:#E65100;">⚡ News-driven trades are fast. For Tier 1 alerts, act within 30-60 minutes.</strong><br>
-    <strong style="color:#F57F17;">⚠️ Not financial advice. Always do your own research. Losses are possible.</strong>
-  </p>
+  <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:10px;
+    padding:16px 18px;margin-top:14px;border-left:4px solid #1a237e;">
+    <p style="font-size:13px;color:#333;margin:0 0 10px;line-height:1.7;">
+      We track the <strong style="color:#1a237e;">20 most market-moving people</strong> affecting
+      <strong>US &amp; Canadian markets</strong> — including Trump, Elon Musk, Fed Chair Kevin Warsh,
+      Warren Buffett, CEOs, Treasury officials, OPEC leaders, and Canadian market figures
+      (Mark Carney, Prem Watsa, Bank of Canada). Each card below explains exactly what was said,
+      which <strong>TSX and NYSE stocks</strong> are affected, and what to do in your TFSA.
+    </p>
+    <p style="font-size:12px;color:#E65100;margin:0 0 6px;font-weight:700;">
+      ⚡ For 🚨 ACT NOW alerts — check your broker within 30-60 minutes. These move fast.
+    </p>
+    <p style="font-size:11px;color:#888;margin:0;">
+      ⚠️ Not financial advice. Always do your own research. Losses are possible. TFSA gains are tax-free but losses are not deductible.
+    </p>
+  </div>
 </div>"""
 
     if act_now:
@@ -1198,12 +1438,16 @@ def build_html_email(by_urgency, total_scanned):
         for a in monitor[:3]: html += build_card(a)
         html += '</div>'
 
+    # ── CONSOLIDATED ACTION TABLE ─────────────────────────────
+    html += build_consolidated_table(all_items)
+
     html += f"""
 <div class="divider"></div>
 <div class="footer-bar">
   <strong>Phase 6 Market Movers Monitor</strong> · Runs every 5 min via GitHub Actions<br>
-  20 people tracked: Trump · Musk · Warsh · Powell · Buffett · Jensen · Dimon · Altman · Bessent
-  · Zuckerberg · Cook · Nadella · Jassy · Ellison · RFK · Xi · MBS · Cathie Wood · Burry + more<br>
+  People tracked: Trump · Musk · Warsh · Powell · Buffett · Jensen · Dimon · Altman · Bessent
+  · Zuckerberg · Cook · Nadella · Jassy · Ellison · RFK · Xi · MBS · Cathie Wood · Burry
+  · Carney · Macklem · Watsa + more (US &amp; Canada)<br>
   Sources: Truth Social (CNN) · trumpstruth.org · Google News · Yahoo Finance<br>
   Research and education only — not financial advice. Trading involves risk of loss.<br>
   <a href="https://truthsocial.com/@realDonaldTrump" style="color:#1565C0;">Trump's Truth Social</a> &nbsp;·&nbsp;
